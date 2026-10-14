@@ -9,9 +9,12 @@ import type { ReactElement } from 'react';
 import { hasRole, type Role } from '../lib/session';
 import AccountPage from '../pages/account/AccountPage';
 import HospitalPage from '../pages/hospital/HospitalPage';
+import DevPage from '../pages/dev/DevPage';
+import HistoryPage from '../pages/history/HistoryPage';
 import Home from '../pages/Home';
 import LogPage from '../pages/log/LogPage';
 import LookupPage from '../pages/lookup/LookupPage';
+import QueuePage from '../pages/queue/QueuePage';
 import SettingPage from '../pages/setting/SettingPage';
 import UserPage from '../pages/user/UserPage';
 
@@ -21,11 +24,15 @@ export const routes: AppRoute[] = [
   { path: '/', element: <Home /> },
   { path: '/account/*', element: <AccountPage /> }, // เปลี่ยนรหัสผ่านตัวเอง
 
+  { path: '/queue/*', element: <QueuePage /> }, // บอร์ดคิว + เพิ่ม/แก้คำขอ
+  { path: '/history/*', element: <HistoryPage /> }, // ประวัติ/ค้นหาคำขอ
+
   { path: '/hospital/*', element: <HospitalPage />, minRole: 'ADMIN' },
   { path: '/lookup/*', element: <LookupPage />, minRole: 'ADMIN' },
   { path: '/user/*', element: <UserPage />, minRole: 'ADMIN' },
   { path: '/setting/*', element: <SettingPage />, minRole: 'ADMIN' },
   { path: '/log/*', element: <LogPage />, minRole: 'ADMIN' },
+  { path: '/dev/*', element: <DevPage />, minRole: 'DEV' }, // เมนูนักพัฒนา
 ];
 
 /** role นี้เข้าหน้าของเมนู path นี้ได้ไหม (ใช้กรองเมนู) — เมนู '/hospital' เทียบกับ route '/hospital/*' */

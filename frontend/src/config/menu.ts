@@ -2,13 +2,21 @@
  * config/menu.ts — เมนูด้านซ้าย (เขียนมือ) — เพิ่มหน้าใหม่ = เพิ่มบรรทัดที่นี่ + เพิ่ม route ที่ config/routes.tsx
  * สิทธิ์ดูจาก routes.tsx — เมนูของหน้าที่ role นั้นเข้าไม่ได้จะถูกซ่อนเอง
  */
-import { Database, Home, Settings, type LucideIcon } from 'lucide-react';
+import { Code, Database, Home, ListOrdered, Settings, type LucideIcon } from 'lucide-react';
 
 export type MenuItem = { label: string; path: string };
 export type MenuGroup = { label: string; icon: LucideIcon; path?: string; children?: MenuItem[] };
 
 export const menu: MenuGroup[] = [
   { label: 'หน้าหลัก', icon: Home, path: '/' },
+  {
+    label: 'คิวขอเตียง',
+    icon: ListOrdered,
+    children: [
+      { label: 'บอร์ดคิว', path: '/queue' },
+      { label: 'ประวัติคำขอ', path: '/history' },
+    ],
+  },
   {
     label: 'ข้อมูลหลัก',
     icon: Database,
@@ -27,6 +35,7 @@ export const menu: MenuGroup[] = [
       { label: 'เปลี่ยนรหัสผ่าน', path: '/account' },
     ],
   },
+  { label: 'นักพัฒนา', icon: Code, children: [{ label: 'ผู้ขอจำลอง', path: '/dev' }] },
 ];
 
 /** ชื่อหน้าสำหรับแสดงบนแถบหัว (Header) — หาจากเมนูที่ path ตรงกับ URL ปัจจุบัน */

@@ -50,7 +50,38 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
 }
 
+/**
+ * ดาวน์โหลดไฟล์ที่ API ตอบกลับเป็นไฟล์ (เช่น Excel) — ส่งข้อมูลใน body (POST) เหมือน API อื่น ไม่ใส่ข้อมูลใน URL
+ * สำเร็จ = เบราว์เซอร์บันทึกไฟล์ให้ · ผิดพลาด = ได้ ApiResult ที่มีข้อความเหมือน API ปกติ
+ */
+async function download(url: string, body: unknown, fallbackName: string): Promise<ApiResult<null>> {
+  try {
+    const res = await fetch(`/api${url}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}), credentials: 'same-origin' });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => null)) as { status?: ApiStatus; message?: string } | null;
+      if (res.status === 401) window.dispatchEvent(new Event(EXPIRED_EVENT));
+      return { ok: false, status: json?.status ?? 'ERROR', message: json?.message ?? `ดาวน์โหลดไม่สำเร็จ (${res.status})`, data: null };
+    }
+    const cd = res.headers.get('Content-Disposition') ?? '';
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const filename = star ? decodeURIComponent(star[1]!) : fallbackName;
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 10_000);
+    return { ok: true, status: 'SUCCESS', message: '', data: null };
+  } catch {
+    return { ok: false, status: 'NETWORK', message: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจว่า API รันอยู่', data: null };
+  }
+}
+
 export const api = {
+  download,
   get: <T>(url: string) => request<T>('GET', url),
   post: <T>(url: string, body?: unknown) => request<T>('POST', url, body ?? {}),
 };

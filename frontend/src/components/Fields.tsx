@@ -52,7 +52,7 @@ function FieldShell({ name, label, required, hint, className, children }: BasePr
   );
 }
 
-export function TextField(props: BaseProps & { type?: 'text' | 'email' | 'number' | 'time' | 'date' | 'password'; maxLength?: number; placeholder?: string; readOnly?: boolean }) {
+export function TextField(props: BaseProps & { type?: 'text' | 'email' | 'number' | 'time' | 'date' | 'datetime-local' | 'password'; maxLength?: number; placeholder?: string; readOnly?: boolean }) {
   const { register, formState } = useFormContext();
   const { name, required, rules, type = 'text', maxLength, placeholder, readOnly, disabled } = props;
   return (

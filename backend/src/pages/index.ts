@@ -6,6 +6,7 @@
  */
 import type { PageDef } from '../core/pages';
 import { dashboardPage } from './dashboard';
+import { devPage } from './dev';
 import { hospitalPage } from './hospital';
 import { logPage } from './log';
 import { lookupPage } from './lookup';
@@ -20,5 +21,6 @@ export const pages: PageDef[] = [
   requestPage, // คำขอเตียง (ตาราง — API มาใน Round 2)
   dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
   userPage, // ผู้ใช้งาน
+  devPage, // เมนูนักพัฒนา (ผู้ขอจำลอง) — DEV เท่านั้น
   logPage, // ดู audit log
 ];
