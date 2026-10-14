@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+/* ============================================================
+   ธีม — แก้สี/ฟอนต์ "ที่ไฟล์นี้ที่เดียว" ทั้งระบบเปลี่ยนตาม
+   • เลือกชุดสีสำเร็จรูปด้วย  APP_THEME=herb | ocean | rose | slate | care | indigo | amber | graphite  ใน .env (ไม่ต้องแก้โค้ด)
+   • อยากได้สีของตัวเอง: คัดลอกบล็อก [data-theme="herb"] ด้านล่างไปตั้งชื่อใหม่ แล้วใส่ APP_THEME=ชื่อนั้น
+   • ชื่อสีที่ใช้ใน className: bg-background bg-card bg-primary text-primary-foreground bg-primary-soft text-primary-ink
+     bg-muted text-muted-foreground border-border bg-accent-soft text-accent-ink bg-danger-soft ... (ดูบล็อก @theme ด้านล่าง)
+   ============================================================ */
+
+/* ---------- ชุดสี herb (ค่าเริ่มต้น): ขาว + เขียวสมุนไพร + ไอวอรี่/ทรายอุ่น + ทองขมิ้นนิดเดียว ---------- */
+:root,
+[data-theme="herb"] {
+  --background: #fbf8f2;            /* พื้นหลังหน้าเว็บ (อุ่นกว่าขาว) */
+  --foreground: #2a2620;            /* ตัวอักษรหลัก */
+  --card: #ffffff;                  /* การ์ด / ช่องกรอก */
+  --muted: #f4ede1;                 /* พื้นรอง (โทนอุ่น) */
+  --muted-foreground: #6b645a;      /* ตัวอักษรรอง */
+  --faint: #9b9387;
+  --border: #e3ddd2;
+
+  --primary: #2f6b4f;               /* สีหลัก: ปุ่ม ลิงก์ สิ่งที่เลือก */
+  --primary-hover: #234f3b;
+  --primary-foreground: #ffffff;    /* ตัวอักษรบนสีหลัก */
+  --primary-soft: #edf5f0;          /* พื้นอ่อนของสีหลัก (เมนูที่เลือก, ปุ่ม soft) */
+  --primary-ink: #234f3b;           /* ตัวอักษรบนพื้นอ่อน */
+  --ring: #2f6b4f;
+
+  --accent-soft: #f7efd2;           /* จุดเน้นโทนอุ่น (ใช้น้อย ๆ) */
+  --accent-ink: #7a5d0a;
+
+  --info-soft: #e3eef8;    --info-ink: #2f5e8a;
+  --success-soft: #dcebe1; --success-ink: #234f3b;
+  --warn-soft: #f7efd2;    --warn-ink: #7a5d0a;
+  --danger: #9a3b32;
+  --danger-soft: #f8e4e1;  --danger-ink: #9a3b32;
+  --neutral-soft: #eeebe6; --neutral-ink: #5f5a52;
+
+  --radius: 0.875rem;
+  --font-sans: "Sarabun", system-ui, sans-serif;
+  --font-display: "Anuphan", "Sarabun", system-ui, sans-serif;
+  --hero-from: #2f6b4f; --hero-to: #4f9473;
+}
+
+/* ---------- ocean: ฟ้า สะอาด (โรงพยาบาล / งานบริการทั่วไป) ---------- */
+[data-theme="ocean"] {
+  --background: #f5f9fc; --foreground: #1b2733; --card: #ffffff; --muted: #e8f0f6; --muted-foreground: #556677; --faint: #8b9bab; --border: #d9e3ec;
+  --primary: #1d6fa5; --primary-hover: #165a88; --primary-foreground: #ffffff; --primary-soft: #e6f1f9; --primary-ink: #165a88; --ring: #1d6fa5;
+  --accent-soft: #fdf0d5; --accent-ink: #8a5a06;
+  --info-soft: #e0e9ff; --info-ink: #2b4fae; --success-soft: #dcf5e4; --success-ink: #166534; --warn-soft: #fdf0d5; --warn-ink: #8a5a06;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eceff1; --neutral-ink: #475467;
+  --hero-from: #1d6fa5; --hero-to: #3a95c8;
+}
+
+/* ---------- rose: ชมพูกุหลาบ (ความงาม / สปา / คลินิก) ---------- */
+[data-theme="rose"] {
+  --background: #fdf8f8; --foreground: #2d2326; --card: #ffffff; --muted: #f8ebec; --muted-foreground: #6e5b60; --faint: #a08c91; --border: #eddfe1;
+  --primary: #b4466b; --primary-hover: #8f3554; --primary-foreground: #ffffff; --primary-soft: #fbe9ef; --primary-ink: #8f3554; --ring: #b4466b;
+  --accent-soft: #f7efd2; --accent-ink: #7a5d0a;
+  --info-soft: #e3eef8; --info-ink: #2f5e8a; --success-soft: #dcf5e4; --success-ink: #166534; --warn-soft: #f7efd2; --warn-ink: #7a5d0a;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eeebe9; --neutral-ink: #5a5254;
+  --hero-from: #b4466b; --hero-to: #d46a8c;
+}
+
+/* ---------- slate: เทาเข้มเรียบ (ระบบภายใน / ราชการ) ---------- */
+[data-theme="slate"] {
+  --background: #f6f7f9; --foreground: #1e2530; --card: #ffffff; --muted: #eceff3; --muted-foreground: #5b6575; --faint: #8f98a6; --border: #dde1e7;
+  --primary: #334155; --primary-hover: #1e293b; --primary-foreground: #ffffff; --primary-soft: #e9edf2; --primary-ink: #1e293b; --ring: #334155;
+  --accent-soft: #fdf0d5; --accent-ink: #8a5a06;
+  --info-soft: #e0e9ff; --info-ink: #2b4fae; --success-soft: #dcf5e4; --success-ink: #166534; --warn-soft: #fdf0d5; --warn-ink: #8a5a06;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eceff1; --neutral-ink: #475467;
+  --hero-from: #334155; --hero-to: #5b6b82;
+}
+
+/* ---------- care: เขียวน้ำเงิน (teal) สะอาดตา เหมาะงานโรงพยาบาล/บริการสุขภาพ ---------- */
+[data-theme="care"] {
+  --background: #f3f6f8; --foreground: #16222b; --card: #ffffff; --muted: #eaf0f3; --muted-foreground: #5b6b78; --faint: #8696a3; --border: #e0e7ec;
+  --primary: #0f6f78; --primary-hover: #0a4f56; --primary-foreground: #ffffff; --primary-soft: #e3f2f3; --primary-ink: #0a4f56; --ring: #0f6f78;
+  --accent-soft: #fff4d6; --accent-ink: #7a5206;
+  --info-soft: #e1ecfb; --info-ink: #1f4f8f; --success-soft: #dcf3e6; --success-ink: #166534; --warn-soft: #fff4d6; --warn-ink: #7a5206;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eceff2; --neutral-ink: #475467;
+  --hero-from: #0f6f78; --hero-to: #2a9d8f;
+}
+
+/* ---------- indigo: น้ำเงินคราม สุขุม (ระบบงานทั่วไป / ฝ่ายบริหาร) ---------- */
+[data-theme="indigo"] {
+  --background: #f5f6fb; --foreground: #1b1f33; --card: #ffffff; --muted: #eceef8; --muted-foreground: #5a6080; --faint: #8b90ad; --border: #dfe2f0;
+  --primary: #3b4cb8; --primary-hover: #2d3b94; --primary-foreground: #ffffff; --primary-soft: #e8ebfa; --primary-ink: #2d3b94; --ring: #3b4cb8;
+  --accent-soft: #fdf0d5; --accent-ink: #8a5a06;
+  --info-soft: #e0e9ff; --info-ink: #2b4fae; --success-soft: #dcf5e4; --success-ink: #166534; --warn-soft: #fdf0d5; --warn-ink: #8a5a06;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eceef4; --neutral-ink: #4b5270;
+  --hero-from: #3b4cb8; --hero-to: #5a6fd8;
+}
+
+/* ---------- amber: ส้มอำพันอุ่น (งานบริการ / ศูนย์ประสานงาน) ---------- */
+[data-theme="amber"] {
+  --background: #faf7f2; --foreground: #2b231b; --card: #ffffff; --muted: #f3ece1; --muted-foreground: #6e6254; --faint: #a0937f; --border: #e8dfd1;
+  --primary: #b45309; --primary-hover: #8f4207; --primary-foreground: #ffffff; --primary-soft: #fcf0e0; --primary-ink: #8f4207; --ring: #b45309;
+  --accent-soft: #e3f2f3; --accent-ink: #0a4f56;
+  --info-soft: #e3eef8; --info-ink: #2f5e8a; --success-soft: #dcf3e6; --success-ink: #166534; --warn-soft: #fff4d6; --warn-ink: #7a5206;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eeebe6; --neutral-ink: #5f5a52;
+  --hero-from: #b45309; --hero-to: #d98324;
+}
+
+/* ---------- graphite: เทาถ่านเข้ม ตัดด้วยน้ำเงิน (ระบบเทคนิค / dev) ---------- */
+[data-theme="graphite"] {
+  --background: #f4f5f6; --foreground: #1a1d21; --card: #ffffff; --muted: #eaecee; --muted-foreground: #5a626b; --faint: #8b929b; --border: #dcdfe3;
+  --primary: #24476b; --primary-hover: #183450; --primary-foreground: #ffffff; --primary-soft: #e6edf4; --primary-ink: #183450; --ring: #24476b;
+  --accent-soft: #fdf0d5; --accent-ink: #8a5a06;
+  --info-soft: #e0e9ff; --info-ink: #2b4fae; --success-soft: #dcf5e4; --success-ink: #166534; --warn-soft: #fdf0d5; --warn-ink: #8a5a06;
+  --danger: #b42318; --danger-soft: #fde8e6; --danger-ink: #b42318; --neutral-soft: #eceff1; --neutral-ink: #475467;
+  --hero-from: #1f3a57; --hero-to: #3c6a99;
+}
+
+/* ---------- ผูกชื่อสี Tailwind เข้ากับตัวแปรด้านบน (ปกติไม่ต้องแก้) ---------- */
+@theme inline {
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-ink: var(--primary-ink);
+  --color-ring: var(--ring);
+  --color-hero-from: var(--hero-from);
+  --color-hero-to: var(--hero-to);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-info-soft: var(--info-soft);       --color-info-ink: var(--info-ink);
+  --color-success-soft: var(--success-soft); --color-success-ink: var(--success-ink);
+  --color-warn-soft: var(--warn-soft);       --color-warn-ink: var(--warn-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);   --color-danger-ink: var(--danger-ink);
+  --color-neutral-soft: var(--neutral-soft); --color-neutral-ink: var(--neutral-ink);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--background); color: var(--foreground);
+  font-family: var(--font-sans); font-size: 16px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3 { font-family: var(--font-display); line-height: 1.3; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--ring) 40%, transparent); outline-offset: 2px; }
+button:not(:disabled), [role="button"] { cursor: pointer; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.anim-rise { animation: rise .3s ease-out both; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

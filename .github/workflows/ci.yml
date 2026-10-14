@@ -1,0 +1,27 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # ฐานข้อมูลสำหรับเทสต์: ค่าตรงกับค่าเริ่มต้นของระบบ (ผู้ใช้ app / รหัส app_password / ฐานข้อมูล bed_queue_test)
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root_password
+          MARIADB_DATABASE: bed_queue_test
+          MARIADB_USER: app
+          MARIADB_PASSWORD: app_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run check   # ตรวจ TypeScript ทั้ง backend และ frontend
+      - run: npm test        # เทสต์ API กับ MariaDB
+      - run: npm run build   # build หน้าเว็บ

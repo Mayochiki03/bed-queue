@@ -1,0 +1,24 @@
+/**
+ * pages/index.ts — รายชื่อ "หน้า" ทั้งหมดของระบบฝั่งหลังบ้าน (เขียนมือ ไม่มีการค้นไฟล์อัตโนมัติ)
+ *
+ * เพิ่มหน้าใหม่ = 1) ก๊อปโฟลเดอร์หน้าตัวอย่าง (เช่น hospital) แล้วเปลี่ยนชื่อ  2) import แล้วต่อท้ายรายการด้านล่าง
+ * ระวัง: ลำดับ migration ดูจากชื่อ (วันที่_เลข) ไม่ใช่ลำดับในรายการนี้ — hospital(10) → lookup(11) → request(20+)
+ */
+import type { PageDef } from '../core/pages';
+import { dashboardPage } from './dashboard';
+import { hospitalPage } from './hospital';
+import { logPage } from './log';
+import { lookupPage } from './lookup';
+import { requestPage } from './request';
+import { settingPage } from './setting';
+import { userPage } from './user';
+
+export const pages: PageDef[] = [
+  settingPage, // ตั้งค่าระบบ (เก็บใน DB)
+  hospitalPage, // โรงพยาบาลต้นทาง
+  lookupPage, // ข้อมูลหลัก: สี / สารเสพติด / เหตุผล
+  requestPage, // คำขอเตียง (ตาราง — API มาใน Round 2)
+  dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
+  userPage, // ผู้ใช้งาน
+  logPage, // ดู audit log
+];

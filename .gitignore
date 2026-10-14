@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# ---- ฐานข้อมูล: ห้ามขึ้น GitHub (อาจมีข้อมูลผู้ป่วย/ข้อมูลส่วนบุคคล) ----
+# ในโฟลเดอร์ database/ เก็บขึ้น git เฉพาะ 3 ไฟล์ตั้งต้นด้านล่าง — อย่างอื่น (ไฟล์สำรอง, ข้อมูล) ไม่ขึ้น
+database/*
+!database/init.sql
+!database/docker-compose.yml
+!database/README.md
+# ไฟล์สำรอง/ไฟล์ข้อมูลฐานข้อมูล ไม่ว่าอยู่โฟลเดอร์ไหน
+*.sql
+!database/init.sql
+*.dump
+*.bak
+*.sqlite
+*.sqlite3
+*.db

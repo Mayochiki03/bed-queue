@@ -1,0 +1,24 @@
+{
+  "name": "bed-queue",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ระบบรับคำขอเตียงผู้ป่วยจากโรงพยาบาลอื่น + จัดคิว + แจ้งเตือน LINE + สถิติ (สร้างบนตัวกลาง app-core-kit)",
+  "workspaces": ["backend", "frontend"],
+  "engines": { "node": ">=22.9" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "start": "npm run start -w backend",
+    "check": "npm run check -w backend && npm run check -w frontend",
+    "test": "npm test -w backend",
+    "migrate": "npm run db -w backend -- migrate",
+    "migrate:status": "npm run db -w backend -- status",
+    "db:reset": "npm run db -w backend -- reset",
+    "seed": "npm run db -w backend -- seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

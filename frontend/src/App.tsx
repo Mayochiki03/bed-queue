@@ -1,0 +1,36 @@
+/**
+ * App.tsx — ตัดสินว่าจะแสดงหน้า Login หรือระบบ (เมนู + หน้าต่าง ๆ จาก config/routes.tsx)
+ */
+import { Navigate, Route, Routes } from 'react-router';
+import { Layout } from './components/layout/Layout';
+import { Spinner } from './components/Spinner';
+import { routes } from './config/routes';
+import { hasRole, useSession } from './lib/session';
+import Forbidden from './pages/Forbidden';
+import Login from './pages/Login';
+import NotFound from './pages/NotFound';
+
+export default function App() {
+  const { ready, user } = useSession();
+
+  if (!ready) return <Spinner />;
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="*" element={<Login />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <Layout>
+      <Routes>
+        {routes.map((r) => (
+          <Route key={r.path} path={r.path} element={!r.minRole || hasRole(user.role, r.minRole) ? r.element : <Forbidden />} />
+        ))}
+        <Route path="/login" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Layout>
+  );
+}

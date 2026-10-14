@@ -1,0 +1,28 @@
+# MariaDB สำหรับพัฒนา — ถ้าเครื่องมี Docker รันคำสั่งเดียวจบ (ที่โฟลเดอร์นอกสุดของโปรเจกต์):
+#   docker compose -f database/docker-compose.yml up -d
+# หยุด:   docker compose -f database/docker-compose.yml down        (ข้อมูลยังอยู่)
+# ลบข้อมูลทิ้ง: docker compose -f database/docker-compose.yml down -v
+#
+# ครั้งแรกจะรัน init.sql ให้เอง (สร้างฐานข้อมูล bed_queue, bed_queue_test และผู้ใช้ app)
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: app-core-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root_password   # รหัส root ของ container นี้ (ใช้ตอนพัฒนาเท่านั้น)
+      TZ: UTC
+    ports:
+      - "3306:3306"                          # ถ้าเครื่องมี MariaDB/MySQL อื่นใช้พอร์ต 3306 อยู่ ให้เปลี่ยนเลขซ้ายมือ เช่น "3307:3306" แล้วตั้ง DB_PORT=3307 ใน .env
+    volumes:
+      - bed_queue_db:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  bed_queue_db:
