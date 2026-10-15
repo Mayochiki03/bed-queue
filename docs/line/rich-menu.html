@@ -1,0 +1,24 @@
+<!doctype html><html lang="th"><meta charset="utf-8">
+<!-- rich-menu.html — ต้นฉบับภาพ Rich Menu ของ LINE OA (2500x843 px) 3 ปุ่มตรงกับแท็บของหน้าผู้ขอ
+     สร้างเป็น PNG ด้วย scripts/make-rich-menu.mjs (ไอคอนจาก lucide) -->
+<style>
+@font-face{font-family:A;font-weight:700;src:url("file:///home/claude/bed-queue/node_modules/@fontsource/anuphan/files/anuphan-thai-700-normal.woff2")}
+@font-face{font-family:A;font-weight:700;src:url("file:///home/claude/bed-queue/node_modules/@fontsource/anuphan/files/anuphan-latin-700-normal.woff2");unicode-range:U+0000-00FF}
+@font-face{font-family:S;font-weight:500;src:url("file:///home/claude/bed-queue/node_modules/@fontsource/sarabun/files/sarabun-thai-500-normal.woff2")}
+@font-face{font-family:S;font-weight:500;src:url("file:///home/claude/bed-queue/node_modules/@fontsource/sarabun/files/sarabun-latin-500-normal.woff2");unicode-range:U+0000-00FF}
+*{margin:0;box-sizing:border-box}
+body{width:2500px;height:843px;font-family:A,S,sans-serif;display:grid;grid-template-columns:repeat(3,1fr);background:#f3f6f8;position:relative}
+.b{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;color:#0a4f56}
+.b+.b{border-left:4px solid #d6e2e8}
+.ic{width:250px;height:250px;border-radius:84px;display:grid;place-items:center;background:#e3f2f3}
+.ic svg{width:132px;height:132px;stroke:#0f6f78;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.main .ic{background:linear-gradient(135deg,#0f6f78,#2a9a95)}.main .ic svg{stroke:#fff}
+.main{background:#e9f4f5}
+h1{font-size:74px;font-weight:700;line-height:1}
+p{font-family:S;font-weight:500;font-size:44px;color:#5b6b78}
+</style>
+<body>
+<div class="b"><div class="ic"><svg viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg></div><h1>คำขอของฉัน</h1><p>ดูคิวและยืนยันส่งตัว</p></div>
+<div class="b main"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg></div><h1>ส่งคำขอเตียง</h1><p>ผู้ป่วย 1 ราย ต่อ 1 คำขอ</p></div>
+<div class="b"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></div><h1>ข้อมูลของฉัน</h1><p>ชื่อ โรงพยาบาล เบอร์โทร</p></div>
+</body></html>

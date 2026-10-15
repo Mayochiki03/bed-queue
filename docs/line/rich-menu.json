@@ -1,0 +1,11 @@
+{
+  "size": { "width": 2500, "height": 843 },
+  "selected": true,
+  "name": "bed-queue-menu",
+  "chatBarText": "เมนูขอเตียง",
+  "areas": [
+    { "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 }, "action": { "type": "uri", "label": "คำขอของฉัน", "uri": "https://liff.line.me/LIFF_ID?tab=mine" } },
+    { "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 }, "action": { "type": "uri", "label": "ส่งคำขอเตียง", "uri": "https://liff.line.me/LIFF_ID?tab=submit" } },
+    { "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 }, "action": { "type": "uri", "label": "ข้อมูลของฉัน", "uri": "https://liff.line.me/LIFF_ID?tab=profile" } }
+  ]
+}

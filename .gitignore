@@ -18,3 +18,7 @@ database/*
 *.sqlite
 *.sqlite3
 *.db
+
+# ผล coverage และโฟลเดอร์ทำงานของ SonarScanner
+coverage/
+.scannerwork/
