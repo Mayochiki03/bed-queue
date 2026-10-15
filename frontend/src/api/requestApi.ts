@@ -40,8 +40,12 @@ export type RequestBase = {
 export type BoardItem = RequestBase & { position_all: number | null; position_color: number | null; wait_days: number; overdue: boolean; called_hours: number | null };
 export type BoardData = { now: string; timeout_hours: number; items: BoardItem[] };
 
-export type RequestEvent = { id: number; event: string; from_status: string | null; to_status: string | null; by_label: string | null; via: string | null; detail: string | null; created_at: string };
+export type RequestEvent = { id: number; event: string; from_status: string | null; to_status: string | null; by_label: string | null; via: string | null; detail: string | null; changes: string | null; created_at: string };
 export type RequestDetail = RequestBase & {
+  called_by_name: string | null;
+  resolved_by_name: string | null;
+  created_at: string;
+  updated_at: string;
   position_all: number | null;
   position_color: number | null;
   requester: { id: number; full_name: string; phone: string; phone2: string | null; has_line: boolean } | null;

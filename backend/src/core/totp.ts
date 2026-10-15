@@ -1,0 +1,116 @@
+/**
+ * core/totp.ts — รหัสยืนยันตัวตน 2 ชั้น (2FA) แบบ TOTP (RFC 6238) ใช้กับแอป Google / Microsoft Authenticator
+ *
+ * หลักการ: ระบบกับแอปในมือถือถือ "กุญแจลับ" (secret) ตัวเดียวกัน ได้มาจากการสแกน QR ครั้งแรก
+ *          ต่างฝ่ายต่างคำนวณ HMAC-SHA1(secret, เวลา ÷ 30 วินาที) → เลข 6 หลักตรงกัน ไม่ต้องต่ออินเทอร์เน็ต
+ *
+ *   generateSecret()              สุ่ม secret 160 bit เป็น base32 (รูปแบบที่แอปใช้)
+ *   totpAt(secret, step)          เลข 6 หลักของช่วงเวลา step
+ *   verifyTotp(secret, code, o)   ตรวจรหัส (ยอมนาฬิกาคลาด ±30 วินาที) → step ที่ตรง หรือ null
+ *   otpauthUrl(...)               ข้อความใน QR code
+ *   generateRecoveryCodes()       รหัสสำรอง 10 ชุด (ใช้ได้ชุดละครั้ง เก็บเป็น HMAC เท่านั้น)
+ *
+ * เขียนด้วย node:crypto ไม่พึ่ง library (ดัดแปลงจากระบบจองคิวนวด)
+ */
+import crypto from 'node:crypto';
+import { config } from './config';
+
+export const STEP_SECONDS = 30;
+const DIGITS = 6;
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+export function base32Encode(buf: Buffer): string {
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of buf) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += B32[(value << (5 - bits)) & 31];
+  return out;
+}
+
+export function base32Decode(str: string): Buffer {
+  const clean = String(str).toUpperCase().replace(/[\s=-]/g, '');
+  let bits = 0;
+  let value = 0;
+  const out: number[] = [];
+  for (const ch of clean) {
+    const idx = B32.indexOf(ch);
+    if (idx === -1) throw new Error('base32: ตัวอักษรไม่ถูกต้อง');
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      out.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(out);
+}
+
+/** secret 20 byte (160 bit ตาม RFC 4226) */
+export const generateSecret = (): string => base32Encode(crypto.randomBytes(20));
+
+/** ช่วงเวลาปัจจุบัน (นับทุก 30 วินาทีตั้งแต่ 1970) */
+export const currentStep = (now = Date.now()): number => Math.floor(now / 1000 / STEP_SECONDS);
+
+/** HOTP (RFC 4226) โดย counter = step */
+export function totpAt(secret: string, step: number, digits = DIGITS): string {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const hmac = crypto.createHmac('sha1', base32Decode(secret)).update(counter).digest();
+  const offset = hmac[hmac.length - 1]! & 0x0f;
+  const bin = ((hmac[offset]! & 0x7f) << 24) | (hmac[offset + 1]! << 16) | (hmac[offset + 2]! << 8) | hmac[offset + 3]!;
+  return String(bin % 10 ** digits).padStart(digits, '0');
+}
+
+/**
+ * ตรวจรหัส 6 หลัก
+ * @param opts.window     ยอมให้นาฬิกาคลาด ± กี่ช่วง (1 = ±30 วินาที)
+ * @param opts.afterStep  step ที่ใช้ไปแล้ว — กันนำรหัสเดิมมาใช้ซ้ำ (replay)
+ * @returns step ที่ตรง หรือ null ถ้าไม่ผ่าน
+ */
+export function verifyTotp(secret: string, code: unknown, { window = 1, afterStep = null, now = Date.now() }: { window?: number; afterStep?: number | null; now?: number } = {}): number | null {
+  const digits = String(code ?? '').replace(/\D/g, '');
+  if (digits.length !== DIGITS) return null;
+  const step = currentStep(now);
+  for (let i = -window; i <= window; i++) {
+    const s = step + i;
+    if (afterStep != null && s <= afterStep) continue;
+    // เทียบแบบเวลาคงที่ กันเดารหัสจากเวลาตอบกลับ
+    if (crypto.timingSafeEqual(Buffer.from(totpAt(secret, s)), Buffer.from(digits))) return s;
+  }
+  return null;
+}
+
+/** ข้อความใน QR code — แอปแสดงเป็น "issuer (account)" */
+export function otpauthUrl({ issuer, account, secret }: { issuer: string; account: string; secret: string }): string {
+  const label = encodeURIComponent(`${issuer}:${account}`);
+  const params = new URLSearchParams({ secret, issuer, algorithm: 'SHA1', digits: String(DIGITS), period: String(STEP_SECONDS) });
+  return `otpauth://totp/${label}?${params}`;
+}
+
+/** แสดง secret ให้พิมพ์เองง่ายขึ้น: ABCD EFGH IJKL ... */
+export const formatSecret = (secret: string): string => secret.replace(/(.{4})/g, '$1 ').trim();
+
+// ---------- รหัสสำรอง (กรณีมือถือหาย) ----------
+const RC_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'; // ตัดตัวที่ดูคล้ายกัน (0/o, 1/l/i)
+const RC_KEY = crypto.createHmac('sha256', Buffer.from(config.appSecretKey, 'hex')).update('user-recovery-code-v1').digest();
+
+/** 10 ชุด ชุดละ 8 ตัว รูปแบบ xxxx-xxxx */
+export function generateRecoveryCodes(n = 10): string[] {
+  return Array.from({ length: n }, () => {
+    const bytes = crypto.randomBytes(8);
+    const s = Array.from(bytes, (b) => RC_ALPHABET[b % RC_ALPHABET.length]).join('');
+    return `${s.slice(0, 4)}-${s.slice(4)}`;
+  });
+}
+
+/** normalize (ตัวเล็ก ตัดขีด/ช่องว่าง) แล้ว HMAC */
+export const hashRecoveryCode = (code: string): string =>
+  crypto.createHmac('sha256', RC_KEY).update(String(code).toLowerCase().replace(/[^a-z0-9]/g, '')).digest('hex');

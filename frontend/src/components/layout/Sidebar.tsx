@@ -1,11 +1,10 @@
 /**
- * components/layout/Sidebar.tsx — เมนูด้านซ้าย: ชื่อระบบ + เมนูพับได้ + (มุมซ้ายล่าง) ผู้ใช้และปุ่มออกจากระบบ
+ * components/layout/Sidebar.tsx — เมนูด้านซ้าย: ชื่อระบบ + เมนูพับได้ (ผู้ใช้/ออกจากระบบอยู่มุมขวาบน ดู UserMenu.tsx)
  * เมนูมาจาก config/menu.ts และซ่อนหน้าที่ role นี้เข้าไม่ได้
  */
-import { ChevronDown, LogOut } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink } from 'react-router';
-import { Button } from '../Button';
 import { menu } from '../../config/menu';
 import { canAccess } from '../../config/routes';
 import { cn } from '../../lib/cn';
@@ -14,7 +13,7 @@ import { useSession } from '../../lib/session';
 type Props = { onNavigate?: () => void };
 
 export function Sidebar({ onNavigate }: Props) {
-  const { user, app, logout } = useSession();
+  const { user, app } = useSession();
   const [closed, setClosed] = useState<Record<string, boolean>>({});
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -62,20 +61,6 @@ export function Sidebar({ onNavigate }: Props) {
           );
         })}
       </nav>
-
-      {/* มุมซ้ายล่าง: ผู้ใช้ + ออกจากระบบ */}
-      <div className="border-t border-border p-3">
-        <div className="mb-2 px-1 text-sm">
-          <div className="font-medium text-foreground">{user?.full_name}</div>
-          <div className="text-xs text-muted-foreground">
-            {user?.username} · {user?.role}
-          </div>
-        </div>
-        <Button variant="outline" full onClick={() => void logout()}>
-          <LogOut className="size-4" />
-          ออกจากระบบ
-        </Button>
-      </div>
     </div>
   );
 }

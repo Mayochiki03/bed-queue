@@ -2,12 +2,14 @@
  * HistoryPage — ประวัติ/ค้นหาคำขอทั้งหมด (ทุกสถานะ): กรองตามสถานะ สี โรงพยาบาล ช่วงวันที่ + ค้นหา ชื่อผู้ป่วย/ผู้ขอ/เลขคำขอ
  * กดแถวเพื่อดูรายละเอียดและประวัติของคำขอ (ทำรายการต่อได้เหมือนในบอร์ด)
  */
+import { FileSpreadsheet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { hospitalApi, type HospitalOption } from '../../api/hospitalApi';
 import { requestApi, STATUS_OPTIONS, type RequestBase } from '../../api/requestApi';
 import { Button } from '../../components/Button';
 import { ColorChip } from '../../components/ColorChip';
 import { DataTable, type Column } from '../../components/DataTable';
+import { ExportDialog } from '../../components/ExportDialog';
 import { FilterInput, FilterSelect } from '../../components/Fields';
 import { PageCard, PageTitle } from '../../components/PageCard';
 import { Pagination } from '../../components/Pagination';
@@ -23,6 +25,7 @@ export default function HistoryPage() {
   const table = useTableData(requestApi.search, { q: '', status: '', color_code: '', hospital_id: '', date_from: '', date_to: '' });
   const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     void hospitalApi.options().then((r) => r.ok && r.data && setHospitals(r.data));
@@ -33,24 +36,27 @@ export default function HistoryPage() {
       header: 'ผู้ป่วย',
       className: 'min-w-[9rem]',
       cell: (r) => (
-        <button type="button" className="text-left" onClick={() => setOpenId(r.id)}>
-          <div className="font-medium text-primary hover:underline">{r.patient_name}</div>
+        <div>
+          <div className="font-medium text-primary">{r.patient_name}</div>
           <div className="text-xs text-muted-foreground">
             {r.request_no} <span className="sm:hidden">· {r.hospital_name}</span>
           </div>
-        </button>
+        </div>
       ),
     },
     { header: 'โรงพยาบาล', cell: (r) => r.hospital_name, className: 'hidden sm:table-cell' },
     { header: 'สี', cell: (r) => (r.color_code ? <ColorChip label={lk.label('COLOR', r.color_code)} color={lk.colorOf(r.color_code)} /> : <span className="text-faint">-</span>), className: 'hidden md:table-cell' },
     { header: 'สารเสพติด', cell: (r) => lk.label('SUBSTANCE', r.substance_code), className: 'hidden lg:table-cell' },
+    { header: 'ผู้ขอ', cell: (r) => r.requester_name, className: 'hidden lg:table-cell' },
     { header: 'ส่งเมื่อ', cell: (r) => formatDateTime(r.submitted_at), className: 'hidden md:table-cell whitespace-nowrap' },
+    { header: 'เรียกคิวเมื่อ', cell: (r) => (r.called_at ? formatDateTime(r.called_at) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },
+    { header: 'ปิดเคสเมื่อ', cell: (r) => (r.resolved_at ? formatDateTime(r.resolved_at) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },
     { header: 'สถานะ', cell: (r) => <StatusChip status={r.status} /> },
   ];
 
   return (
     <>
-      <PageTitle hint="คำขอทั้งหมดทุกสถานะ — กดที่ชื่อผู้ป่วยเพื่อดูรายละเอียดและประวัติ">ประวัติคำขอ</PageTitle>
+      <PageTitle hint="คำขอทั้งหมดทุกสถานะ — กดที่แถวไหนก็ได้เพื่อดูรายละเอียดและประวัติ">ประวัติคำขอ</PageTitle>
       <PageCard className="mb-4">
         <div className="grid gap-3 md:grid-cols-3">
           <FilterInput label="ค้นหา ชื่อผู้ป่วย / ผู้ขอ / โรงพยาบาล / เลขคำขอ" value={table.draft.q} onChange={(v) => table.setDraft('q', v)} onEnter={table.search} />
@@ -77,10 +83,31 @@ export default function HistoryPage() {
           <Button onClick={table.search}>{MSG.search}</Button>
         </div>
       </PageCard>
-      <PageCard title="รายการคำขอ">
-        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} />
+      <PageCard
+        title="รายการคำขอ"
+        actions={
+          <Button variant="outline" onClick={() => setExporting(true)}>
+            <FileSpreadsheet className="size-4" /> ส่งออก Excel
+          </Button>
+        }
+      >
+        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} onRowClick={(r) => setOpenId(r.id)} />
         <Pagination paging={table.paging} onPage={table.goPage} onPageSize={table.changePageSize} />
       </PageCard>
+      <ExportDialog
+        open={exporting}
+        onClose={() => setExporting(false)}
+        initial={['requests', 'events']}
+        filters={{
+          q: table.applied.q.trim(),
+          statuses: table.applied.status ? [table.applied.status] : [],
+          color_code: table.applied.color_code,
+          hospital_id: table.applied.hospital_id ? Number(table.applied.hospital_id) : undefined,
+          date_from: table.applied.date_from || undefined,
+          date_to: table.applied.date_to || undefined,
+        }}
+        filtersNote="คำขอและประวัติเหตุการณ์จะออกตามตัวกรองที่ใช้อยู่ในหน้านี้ (ไม่ได้กดค้นหาใหม่ = ใช้ค่าล่าสุดที่ค้นแล้ว) — ล้างตัวกรองถ้าต้องการทั้งหมด"
+      />
       {openId && <RequestDialog id={openId} onClose={() => setOpenId(null)} onChanged={table.reload} />}
     </>
   );

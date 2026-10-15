@@ -32,6 +32,80 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
+const SOURCE_LABEL: Record<string, string> = { APP: 'ผู้ขอส่งเอง', ADMIN: 'เจ้าหน้าที่บันทึกแทน', IMPORT: 'นำเข้าจาก Excel' };
+const dayDiff = (a: string, b: string) => {
+  const d = (new Date(b).getTime() - new Date(a).getTime()) / 86_400_000;
+  return d < 1 ? fmtWait(d) : `${d.toFixed(1)} วัน`;
+};
+
+/** เวลาสำคัญของคำขอ: ส่ง → เรียก → ตอบ → ปิดเคส (ใครทำ ช่องทางไหน) */
+function Times({ d }: { d: RequestDetail }) {
+  const firstCall = d.events.find((e) => e.event === 'CALLED')?.created_at ?? null;
+  const rows: { label: string; value: React.ReactNode }[] = [
+    { label: 'ส่งคำขอเมื่อ', value: <>{formatDateTime(d.submitted_at)} <span className="text-muted-foreground">({SOURCE_LABEL[d.source] ?? d.source})</span></> },
+  ];
+  if (Math.abs(new Date(d.created_at).getTime() - new Date(d.submitted_at).getTime()) > 120_000) rows.push({ label: 'บันทึกเข้าระบบเมื่อ', value: formatDateTime(d.created_at) });
+  if (firstCall) rows.push({ label: 'เรียกคิวครั้งแรก', value: <>{formatDateTime(firstCall)} <span className="text-muted-foreground">(รอ {dayDiff(d.submitted_at, firstCall)} นับจากส่งคำขอ)</span></> });
+  if (d.called_at) rows.push({ label: 'เรียกคิวล่าสุด', value: <>{formatDateTime(d.called_at)}{d.called_by_name ? ` · โดย ${d.called_by_name}` : ''} <span className="text-muted-foreground">(เรียกแล้ว {d.call_count} ครั้ง)</span></> });
+  if (d.responded_at) rows.push({ label: 'ผู้ขอตอบเมื่อ', value: formatDateTime(d.responded_at) });
+  if (d.resolved_at) {
+    rows.push({
+      label: d.status === 'CONFIRMED' ? 'ยืนยันส่งตัวเมื่อ' : d.status === 'DECLINED' ? 'ไม่ยืนยันเมื่อ' : 'ปิดเคสเมื่อ',
+      value: (
+        <>
+          {formatDateTime(d.resolved_at)}
+          {d.resolved_via ? ` · ${VIA_LABEL[d.resolved_via] ?? d.resolved_via}` : ''}
+          {d.resolved_by_name ? ` · โดย ${d.resolved_by_name}` : ''} <span className="text-muted-foreground">(รวม {dayDiff(d.submitted_at, d.resolved_at)} นับจากส่งคำขอ)</span>
+        </>
+      ),
+    });
+  }
+  if (Math.abs(new Date(d.updated_at).getTime() - new Date(d.created_at).getTime()) > 120_000) rows.push({ label: 'แก้ไขล่าสุดเมื่อ', value: formatDateTime(d.updated_at) });
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-semibold text-foreground">เวลาสำคัญ</h3>
+      <dl className="grid gap-x-4 gap-y-1.5 rounded-lg bg-muted/60 p-3 text-sm sm:grid-cols-[11rem_1fr]">
+        {rows.map((r) => (
+          <div key={r.label} className="contents">
+            <dt className="text-muted-foreground">{r.label}</dt>
+            <dd className="text-foreground">{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** ค่าก่อน → หลัง ของเหตุการณ์แก้ไข/โอนเคส */
+function Changes({ json }: { json: string | null }) {
+  const lk = useLookups();
+  if (!json) return null;
+  let list: { field: string; label: string; from: string | null; to: string | null }[] = [];
+  try {
+    list = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  const show = (field: string, v: string | null) => {
+    if (v === null) return <span className="text-faint">(ว่าง)</span>;
+    if (field === 'color_code') return lk.label('COLOR', v);
+    if (field === 'substance_code') return lk.label('SUBSTANCE', v);
+    if (field === 'reason_code') return lk.label('REASON', v);
+    if (field === 'patient_gender') return GENDER_LABEL[v] ?? v;
+    if (field === 'submitted_at') return formatDateTime(v);
+    return v;
+  };
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs">
+      {list.map((c) => (
+        <li key={c.field} className="break-words">
+          <span className="text-muted-foreground">{c.label}:</span> <span className="line-through decoration-faint">{show(c.field, c.from)}</span> → <b className="font-medium text-foreground">{show(c.field, c.to)}</b>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) {
   const navigate = useNavigate();
   const popup = usePopup();
@@ -293,9 +367,6 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
             <Info label="จังหวัด">{d.patient_province}</Info>
             <Info label="ประเภทสารเสพติด">{d.substance_code ? lk.label('SUBSTANCE', d.substance_code) : ''}</Info>
             <Info label="เหตุผลการส่งต่อ">{d.reason_code ? lk.label('REASON', d.reason_code) : ''}</Info>
-            <Info label="ส่งคำขอเมื่อ">
-              {formatDateTime(d.submitted_at)} <span className="text-muted-foreground">({d.source === 'APP' ? 'ผู้ขอส่งเอง' : d.source === 'ADMIN' ? 'เจ้าหน้าที่บันทึก' : 'นำเข้าจาก Excel'})</span>
-            </Info>
             {d.status === 'WAITING' && (
               <Info label="ลำดับในคิว">
                 {d.position_all !== null && (
@@ -306,14 +377,15 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                 )}
               </Info>
             )}
-            {d.resolved_at && <Info label="ปิดเคสเมื่อ">{formatDateTime(d.resolved_at)}{d.resolved_via ? ` (${VIA_LABEL[d.resolved_via] ?? d.resolved_via})` : ''}</Info>}
             <div className="sm:col-span-2">
               <Info label="หมายเหตุ">{d.note}</Info>
             </div>
           </dl>
 
+          <Times d={d} />
+
           <section>
-            <h3 className="mb-2 text-sm font-semibold text-foreground">ประวัติ</h3>
+            <h3 className="mb-2 text-sm font-semibold text-foreground">ประวัติทุกเหตุการณ์ ({d.events.length})</h3>
             <ol className="flex flex-col gap-0 border-l-2 border-border pl-4">
               {d.events.map((e, i) => (
                 <li key={e.id} className={cn('relative pb-3 text-sm', i === d.events.length - 1 && 'pb-0')}>
@@ -326,6 +398,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                     {[e.by_label, e.via ? VIA_LABEL[e.via] : ''].filter(Boolean).join(' · ')}
                     {e.detail ? ` — ${e.detail}` : ''}
                   </div>
+                  <Changes json={e.changes} />
                 </li>
               ))}
             </ol>

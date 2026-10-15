@@ -1,6 +1,6 @@
 /**
  * UserController.ts — API "ผู้ใช้งาน" (ADMIN ขึ้นไป · รหัสผ่านไม่ถูกบันทึกลง audit log)
- *   POST /api/user/search | get | add | update | delete | reset-password
+ *   POST /api/user/search | get | add | update | delete | reset-password | reset-mfa
  */
 import { Router, type Request, type Response } from 'express';
 import { ok, parse } from '../../core/http';
@@ -17,6 +17,7 @@ export class UserController {
     this.router.post('/update', this.update);
     this.router.post('/delete', this.remove);
     this.router.post('/reset-password', this.resetPassword);
+    this.router.post('/reset-mfa', this.resetMfa);
   }
 
   private search = async (req: Request, res: Response) => {
@@ -38,5 +39,9 @@ export class UserController {
   private resetPassword = async (req: Request, res: Response) => {
     await this.service.resetPassword(parse(userResetPasswordDto, req.body), req.user!);
     res.json(ok(null, 'ตั้งรหัสผ่านใหม่สำเร็จ'));
+  };
+  private resetMfa = async (req: Request, res: Response) => {
+    await this.service.resetMfa(parse(userIdDto, req.body).id, req.user!);
+    res.json(ok(null, 'รีเซ็ตการยืนยันตัวตน 2 ชั้นแล้ว — ล็อกอินครั้งถัดไปต้องผูกแอปใหม่'));
   };
 }

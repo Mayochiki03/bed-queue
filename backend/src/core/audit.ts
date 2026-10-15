@@ -11,6 +11,13 @@ import { db, nowIso } from './db';
 
 const SENSITIVE = /password|secret|token/i;
 const SKIPPED = /\/search$/;
+/** หน้า audit 'minimal' (มีข้อมูลผู้ป่วย): เก็บเฉพาะฟิลด์ที่ไม่ใช่ข้อมูลส่วนบุคคล — รู้ว่าทำอะไรกับเคสไหน/ส่งออกอะไร โดยไม่เก็บชื่อ-เบอร์ */
+const SAFE_KEYS = ['id', 'ids', 'action', 'via', 'hospital_id', 'requester_id', 'color_code', 'substance_code', 'reason_code', 'status', 'statuses', 'days', 'sections', 'widget_ids', 'scope', 'date_from', 'date_to'];
+function safeSubset(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return undefined;
+  const pick = Object.fromEntries(Object.entries(body as Record<string, unknown>).filter(([k]) => SAFE_KEYS.includes(k)));
+  return Object.keys(pick).length ? pick : undefined;
+}
 
 function mask(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(mask);
@@ -66,8 +73,8 @@ export function auditMiddleware(req: Request, res: Response, next: NextFunction)
       path,
       status_code: res.statusCode,
       ip: req.ip,
-      // หน้าที่ตั้ง audit: 'minimal' (มีข้อมูลผู้ป่วย) ไม่เก็บ body — เก็บแค่ใคร/ทำอะไร/ผลลัพธ์
-      detail: res.locals.auditMinimal ? undefined : req.body,
+      // หน้าที่ตั้ง audit: 'minimal' (มีข้อมูลผู้ป่วย) ไม่เก็บ body ทั้งก้อน — เก็บแค่ใคร/ทำอะไร/ผลลัพธ์ + ฟิลด์ที่ไม่ใช่ข้อมูลส่วนบุคคล
+      detail: res.locals.auditMinimal ? safeSubset(req.body) : req.body,
     });
   });
   next();

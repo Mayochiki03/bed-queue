@@ -2,7 +2,6 @@
  * WidgetBuilder — หน้าต่างสร้าง/แก้ widget พร้อม "ตัวอย่างสด" (เรียก /widget/preview เมื่อหยุดแก้ ~400ms)
  * ตัวเลือกที่ใช้ร่วมกันไม่ได้จะถูกปิดและบอกเหตุผล (กติกาเดียวกับเซิร์ฟเวอร์ — เซิร์ฟเวอร์ตรวจซ้ำเสมอ)
  */
-import { Download } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dashboardApi, type WidgetResult, type WidgetSaveInput } from '../../api/dashboardApi';
 import { useLookups } from '../../hooks/useLookups';
@@ -138,9 +137,6 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
         <>
           <Button variant="outline" onClick={onClose}>
             ยกเลิก
-          </Button>
-          <Button variant="outline" disabled={!!problem || !!err} onClick={() => void dashboardApi.exportXlsx({ days: dashboardDays, config })}>
-            <Download className="size-4" /> ส่งออกตัวอย่างเป็น Excel
           </Button>
           <Button loading={saving} onClick={() => void handleSave()}>
             บันทึก

@@ -1,0 +1,100 @@
+/**
+ * Notification.ts — ชนิดข้อความแจ้งเตือน LINE ที่ระบบส่งหาผู้ขอ + ค่าตั้งต้น + ตัวแปรที่ใช้ในข้อความ
+ *
+ * ออกแบบตามระบบจองคิวนวด: แต่ละชนิดเปิด/ปิดได้ แก้หัวข้อ-ข้อความได้ (เก็บในตาราง notification_template)
+ * ข้อความตั้งต้นไม่ใส่ชื่อผู้ป่วยโดยตั้งใจ — ข้อความผ่านเซิร์ฟเวอร์ LINE (นอกหน่วยงาน) ใช้เลขที่คำขอแทน (PDPA)
+ */
+export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED';
+
+export type TemplateDef = {
+  type: NotifyType;
+  /** ชื่อที่แอดมินเห็น */
+  name: string;
+  /** อธิบายว่าส่งเมื่อไร */
+  when: string;
+  title: string;
+  body: string;
+  /** เปิดใช้ตั้งแต่เริ่ม (ชนิดที่ไม่จำเป็นปิดไว้เพื่อประหยัดโควต้า LINE ฟรี 300 ข้อความ/เดือน) */
+  enabled: boolean;
+  /** ปุ่มท้ายข้อความ (ถ้ามี) */
+  button?: string;
+};
+
+export const TEMPLATE_DEFS: TemplateDef[] = [
+  {
+    type: 'CALLED',
+    name: 'เรียกคิว (ถึงคิวแล้ว)',
+    when: 'ส่งเมื่อเจ้าหน้าที่กด "เรียกคิว" ให้ผู้ขอกดยืนยัน/ไม่ยืนยันการส่งตัว',
+    title: 'ถึงคิวของคุณแล้ว',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถึงคิวแล้ว\nกรุณากดตอบว่ายืนยันส่งตัวหรือไม่ภายใน {timeout_hours} ชั่วโมง',
+    enabled: true,
+    button: 'ตอบรับ / ไม่ยืนยัน',
+  },
+  {
+    type: 'CANCELLED',
+    name: 'ยกเลิกคำขอ (โดยเจ้าหน้าที่)',
+    when: 'ส่งเมื่อเจ้าหน้าที่ยกเลิกคำขอ (ผู้ขอยกเลิกเองไม่ส่ง)',
+    title: 'คำขอถูกยกเลิก',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถูกยกเลิกโดยเจ้าหน้าที่\nหากยังต้องการเตียง กรุณาส่งคำขอใหม่',
+    enabled: true,
+    button: 'เปิดดูคำขอ',
+  },
+  {
+    type: 'REQUEUED',
+    name: 'คืนคิว (กลับไปรอ)',
+    when: 'ส่งเมื่อเจ้าหน้าที่คืนคำขอที่เรียกแล้วกลับไปรอคิวตามเดิม',
+    title: 'คำขอกลับเข้าคิวรอ',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} กลับเข้าคิวรอตามลำดับเดิม ยังไม่ต้องดำเนินการอะไร',
+    enabled: true,
+    button: 'เปิดดูคำขอ',
+  },
+  {
+    type: 'TRANSFERRED',
+    name: 'โอนเคสมาให้ผู้ขอคนใหม่',
+    when: 'ส่งหาผู้ขอคนใหม่เมื่อเจ้าหน้าที่โอนเคสให้ (ผู้ขอคนเดิมไม่ได้รับ)',
+    title: 'มีเคสโอนมาให้คุณ',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถูกโอนมาให้คุณดูแล\nการติดต่อจากเจ้าหน้าที่จะมาที่คุณแทนผู้ขอเดิม',
+    enabled: true,
+    button: 'เปิดดูคำขอ',
+  },
+  {
+    type: 'SUBMITTED',
+    name: 'ยืนยันว่าได้รับคำขอ',
+    when: 'ส่งทันทีที่ผู้ขอส่งคำขอสำเร็จ (ปิดไว้เป็นค่าเริ่มต้น เพราะผู้ขอเห็นสถานะในหน้าจออยู่แล้ว)',
+    title: 'ได้รับคำขอแล้ว',
+    body: 'ระบบได้รับคำขอเลขที่ {request_no} ของ {hospital} แล้ว (สี{color}) ติดตามลำดับคิวได้ในหน้าจอของคุณ',
+    enabled: false,
+    button: 'เปิดดูคำขอ',
+  },
+  {
+    type: 'REOPENED',
+    name: 'เปิดคำขอกลับมาใหม่',
+    when: 'ส่งเมื่อเจ้าหน้าที่เปิดคำขอที่ปิดไปแล้วกลับมาใช้งาน (ปิดไว้เป็นค่าเริ่มต้น)',
+    title: 'คำขอถูกเปิดกลับมา',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถูกเปิดกลับมารอคิวตามลำดับเดิม',
+    enabled: false,
+    button: 'เปิดดูคำขอ',
+  },
+];
+
+/** ตัวแปรที่ใช้ใน {…} ของข้อความ (ไม่มีชื่อผู้ป่วย/เบอร์โทรโดยตั้งใจ) */
+export const TEMPLATE_VARS: { key: string; label: string; sample: string }[] = [
+  { key: 'request_no', label: 'เลขที่คำขอ', sample: 'BQ000123' },
+  { key: 'hospital', label: 'ชื่อโรงพยาบาลผู้ขอ', sample: 'รพ.สงขลา' },
+  { key: 'requester_name', label: 'ชื่อผู้ขอ', sample: 'สมศรี ใจดี' },
+  { key: 'color', label: 'สี', sample: 'เหลือง' },
+  { key: 'reason', label: 'เหตุผลการส่งต่อ', sample: 'ต้องการเตียงบำบัด' },
+  { key: 'timeout_hours', label: 'เวลารอยืนยัน (ชั่วโมง)', sample: '24' },
+];
+
+export type TemplateRow = { type: NotifyType; title: string; body: string; is_enabled: boolean | number; updated_at: string };
+export type LogRow = {
+  id: number;
+  request_id: number | null;
+  requester_id: number | null;
+  type: string;
+  channel: string;
+  status: 'SENT' | 'FAILED' | 'SKIPPED';
+  error_message: string | null;
+  created_at: string;
+};

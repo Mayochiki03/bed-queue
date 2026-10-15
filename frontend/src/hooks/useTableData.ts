@@ -54,6 +54,8 @@ export function useTableData<T, F extends Record<string, string>>(fetcher: (para
     paging: data ?? { pageNo: 1, pageSize, totalRow: 0, totalPage: 1, rowsPerPageOption: [15, 30, 50, 100] },
     loading,
     draft,
+    /** ตัวกรองที่ใช้อยู่จริง (หลังกดค้นหา) */
+    applied,
     setDraft,
     search,
     reset,

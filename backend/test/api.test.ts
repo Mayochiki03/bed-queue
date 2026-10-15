@@ -263,7 +263,7 @@ describe('ตั้งค่าระบบ (เก็บใน DB · ค่า�
   it('มีค่าเริ่มต้นให้ทุกค่า', async () => {
     const ui = (await call('POST', '/setting/ui', {})).data;
     assert.equal(ui.confirm_timeout_hours, 24);
-    assert.equal(ui.queue_display, 'both');
+    assert.equal(ui.queue_display, 'all'); // ผู้ขอเห็นลำดับภาพรวมเป็นค่าเริ่มต้น
     assert.equal(ui.dashboard_default_days, 30);
   });
 
@@ -537,28 +537,40 @@ describe('dashboard widget (สร้าง/จัดวาง/คำนวณ/�
     assert.equal((await call('POST', '/dashboard/widget/delete', { id })).http, 404);
   });
 
-  it('ส่งออก Excel ได้ไฟล์ .xlsx จริง (ทั้งหน้า / ตัวที่ยังไม่บันทึก) และกันสูตร', async () => {
-    const send = (body: unknown) => fetch(`${base}/dashboard/widget/export`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: staffCookie }, body: JSON.stringify(body) });
-    const r = await send({ days: 30 });
+  it('ส่งออก Excel ปุ่มเดียว: ได้ไฟล์ .xlsx จริง มีกราฟของ Excel ครบ กันสูตร และเลือกชุดข้อมูลได้', async () => {
+    const send = (body: unknown, ck = staffCookie) => fetch(`${base}/export/build`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: ck }, body: JSON.stringify(body) });
+    const r = await send({ sections: ['summary', 'widgets'], days: 30 });
     assert.equal(r.status, 200);
     assert.match(r.headers.get('content-type') ?? '', /spreadsheetml/);
-    assert.match(r.headers.get('content-disposition') ?? '', /filename\*=UTF-8''dashboard-\d{8}\.xlsx/);
+    assert.match(r.headers.get('content-disposition') ?? '', /filename\*=UTF-8''.+\.xlsx/);
     const buf = Buffer.from(await r.arrayBuffer());
     assert.equal(buf.subarray(0, 2).toString(), 'PK'); // xlsx = zip
 
     const ExcelJS = (await import('exceljs')).default;
+    const JSZip = (await import('jszip')).default;
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as any);
-    assert.ok(wb.worksheets.length >= 2);
-    assert.equal(wb.worksheets[0]!.name, 'ตัวเลขสรุป');
+    assert.equal(wb.worksheets[0]!.name, 'สรุปภาพรวม');
+    assert.ok(wb.worksheets.length >= 3);
+    // กราฟจริง: มีไฟล์ chart ใน zip และชีตสรุปอ้างถึง drawing
+    const zip = await JSZip.loadAsync(buf);
+    const charts = Object.keys(zip.files).filter((f) => /^xl\/charts\/chart\d+\.xml$/.test(f));
+    assert.ok(charts.length >= 5, `ควรมีกราฟอย่างน้อย 5 อัน (มี ${charts.length})`);
+    assert.match(await zip.file('[Content_Types].xml')!.async('string'), /drawingml\.chart\+xml/);
+    for (const f of charts) assert.ok((await zip.file(f)!.async('string')).includes('<c:ser>'), f);
 
-    const r2 = await send({ config: cfg({ title: '=HYPERLINK("x")', measures: ['submitted'], group_by: 'color', chart: 'bar' }) });
+    // กราฟที่ยังไม่บันทึก + ชื่อขึ้นต้นด้วยสูตร → ถูกกัน
+    const r2 = await send({ sections: ['widgets'], config: cfg({ title: '=HYPERLINK("x")', measures: ['submitted'], group_by: 'color', chart: 'bar' }) });
     assert.equal(r2.status, 200);
     const wb2 = new ExcelJS.Workbook();
     await wb2.xlsx.load(Buffer.from(await r2.arrayBuffer()) as any);
     assert.equal(String(wb2.worksheets[0]!.getCell(1, 1).value).startsWith("'="), true);
 
-    assert.equal((await send({ ids: [999999] })).status, 404);
+    assert.equal((await send({ sections: ['widgets'], widget_ids: [999999] })).status, 404);
+    assert.equal((await send({ sections: [] })).status, 400); // ต้องเลือกอย่างน้อย 1 ชุด
+    assert.equal((await send({ sections: ['audit'] })).status, 400); // STAFF ส่งออก log ไม่ได้
+    assert.equal((await send({ sections: ['audit'] }, cookie)).status, 200); // ผู้ดูแลได้
+    assert.equal((await call('POST', '/export/options', {}, false)).http, 401);
     await db('bed_request').delete();
   });
 });
@@ -693,7 +705,13 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     const after = (await call('POST', '/request/get', { id: cur.id }, staff)).data;
     assert.equal(after.color_code, 'ORANGE');
     assert.equal(after.patient_age, 45);
-    assert.match(after.events.at(-1).detail, /color_code/);
+    const ev = after.events.at(-1);
+    assert.match(ev.detail, /สี/);
+    const changes = JSON.parse(ev.changes) as { field: string; from: string | null; to: string | null }[];
+    const color = changes.find((x) => x.field === 'color_code')!;
+    assert.equal(color.to, 'ORANGE');
+    assert.notEqual(color.from, 'ORANGE'); // เก็บค่าก่อนแก้ไว้ด้วย
+    assert.ok(changes.some((x) => x.field === 'patient_age' && x.from === null && x.to === '45'));
 
     const list = (await call('POST', '/request/requesters', { hospital_id: cur.hospital_id }, staff)).data as any[];
     assert.equal(list.length, 2);
@@ -710,10 +728,12 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
 
   it('ฝั่งผู้ขอ: ดูคำขอ+ลำดับตาม queue_display · ถูกเรียกแล้วกดยืนยัน/ไม่ยืนยันเอง · ยกเลิกของคนอื่นไม่ได้', async () => {
     const setDisplay = (v: string) => call('POST', '/setting/save', { values: { queue_display: v } });
-    await setDisplay('both');
+    await setDisplay('all');
     let mine = (await as('mine', { requester_id: a })).data as any[];
     const w = mine.find((m) => m.id === reqs.p3 || m.id === reqs.p2)!;
-    assert.ok(w.position_all > 0 && w.position_color > 0);
+    assert.ok(w.position_all > 0);
+    assert.equal(w.position_color, null, 'ผู้ขอเห็นแค่ภาพรวม ไม่เห็นรายละเอียดแยกสี');
+    assert.equal((await setDisplay('both')).http, 400); // ตัวเลือกเดิมที่เลิกใช้แล้ว
     await setDisplay('color');
     mine = (await as('mine', { requester_id: a })).data;
     assert.equal(mine.find((m) => m.id === w.id).position_all, null);
@@ -721,7 +741,6 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     await setDisplay('all');
     mine = (await as('mine', { requester_id: a })).data;
     assert.equal(mine.find((m) => m.id === w.id).position_color, null);
-    await setDisplay('both');
 
     // ผู้ขอ B ไปแตะคำขอของ A ไม่ได้
     assert.equal((await as('cancel', { requester_id: b, id: reqs.p2 })).http, 404);
@@ -783,6 +802,54 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     assert.ok(!logs.includes('ผู้ป่วย แดง1'), 'audit ของหน้าคำขอ/dev ต้องไม่เก็บชื่อผู้ป่วย');
   });
 
+  it('ส่งออก Excel ข้อมูลละเอียด: คำขอ/เหตุการณ์/ผู้ขอ ครบ เวลาเป็นเวลาไทย ตัวกรองใช้ได้ · log ไม่เก็บชื่อผู้ป่วย', async () => {
+    const send = (body: unknown, ck = staff) => fetch(`${base}/export/build`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: ck }, body: JSON.stringify(body) });
+    const ExcelJS = (await import('exceljs')).default;
+    const load = async (r: Response) => {
+      assert.equal(r.status, 200);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(Buffer.from(await r.arrayBuffer()) as any);
+      return wb;
+    };
+    const wb = await load(await send({ sections: ['requests', 'events', 'requesters'], scope: 'all' }));
+    assert.deepEqual(wb.worksheets.map((w) => w.name), ['คำขอ', 'ประวัติเหตุการณ์', 'ผู้ขอ']);
+    const ws = wb.getWorksheet('คำขอ')!;
+    const header = (ws.getRow(4).values as any[]).slice(1);
+    for (const h of ['เลขคำขอ', 'ชื่อผู้ป่วย', 'โรงพยาบาลต้นทาง', 'ผู้ขอ', 'เบอร์ผู้ขอ', 'เวลาที่ส่งคำขอ', 'เวลาที่เรียกคิว (ล่าสุด)', 'เวลาที่ผู้ขอตอบ', 'เวลาที่ปิดเคส', 'ได้ผลจาก', 'เรียกโดย', 'ปิดเคสโดย', 'บันทึกเข้าระบบเมื่อ']) assert.ok(header.includes(h), `ขาดคอลัมน์ ${h}`);
+    const total = await db('bed_request').count({ n: '*' }).first().then((r: any) => Number(r.n));
+    assert.equal(ws.rowCount - 4, total); // ทุกคำขอ ไม่ตกหล่น
+    const col = (name: string) => header.indexOf(name) + 1;
+    const names = Array.from({ length: total }, (_, i) => String(ws.getRow(5 + i).getCell(col('ชื่อผู้ป่วย')).value));
+    assert.ok(names.includes('ผู้ป่วย แดง1'));
+    // เวลาไทย: ค่าใน Excel = UTC + 7 ชม.
+    const row = Array.from({ length: total }, (_, i) => ws.getRow(5 + i)).find((r) => r.getCell(col('ชื่อผู้ป่วย')).value === 'ผู้ป่วย แดง1')!;
+    const dbRow = await db('bed_request').where({ patient_name: 'ผู้ป่วย แดง1' }).first();
+    assert.equal((row.getCell(col('เวลาที่ส่งคำขอ')).value as Date).getTime(), Math.floor(new Date(dbRow.submitted_at).getTime() / 1000) * 1000 + 7 * 3_600_000);
+    assert.equal(String(row.getCell(col('สถานะ')).value), ({ WAITING: 'รอคิว', CALLED: 'เรียกแล้ว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก' } as Record<string, string>)[dbRow.status]);
+
+    const ev = wb.getWorksheet('ประวัติเหตุการณ์')!;
+    const evTotal = await db('request_event').count({ n: '*' }).first().then((r: any) => Number(r.n));
+    assert.equal(ev.rowCount - 4, evTotal);
+    const evText = JSON.stringify(ev.getSheetValues());
+    assert.match(evText, /แก้ไขข้อมูล/);
+    assert.match(evText, /สี: .* → ส้ม/); // ค่าก่อน → หลัง ของการแก้ไข
+
+    // ตัวกรองเหมือนหน้าประวัติ: เฉพาะสถานะ CONFIRMED
+    const only = await load(await send({ sections: ['requests'], filters: { statuses: ['CONFIRMED'], q: '', color_code: '' } }));
+    const w2 = only.getWorksheet('คำขอ')!;
+    const confirmed = await db('bed_request').where({ status: 'CONFIRMED' }).count({ n: '*' }).first().then((r: any) => Number(r.n));
+    assert.ok(confirmed >= 1);
+    assert.equal(w2.rowCount - 4, confirmed);
+
+    // audit: บันทึกว่าส่งออกอะไร แต่ไม่เก็บชื่อผู้ป่วย
+    await new Promise((r) => setTimeout(r, 200));
+    const logs = await db('audit_logs').where({ page: 'export', action: 'BUILD' }).select('detail');
+    assert.ok(logs.length >= 1 && logs.some((l: any) => String(l.detail).includes('"sections"')));
+    const trans = await db('audit_logs').where({ page: 'request', action: 'TRANSITION' }).select('detail');
+    assert.ok(trans.some((l: any) => String(l.detail).includes('"action"'))); // รู้ว่าทำอะไรกับเคสไหน
+    assert.ok(!JSON.stringify(trans).includes('ผู้ป่วย แดง'));
+  });
+
   it('ล้างข้อมูลจำลอง: ลบผู้ขอจำลอง + คำขอ + ประวัติของพวกเขา (ไม่แตะคำขอของเจ้าหน้าที่)', async () => {
     const before = await db('bed_request').count({ n: '*' }).first().then((r: any) => Number(r.n));
     const r = await call('POST', '/dev/mock/clear', {});
@@ -792,6 +859,131 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     assert.equal(await db('bed_request').count({ n: '*' }).first().then((x: any) => Number(x.n)), 1);
     assert.equal(await db('request_event').count({ n: '*' }).first().then((x: any) => Number(x.n)), 1);
     await db('bed_request').delete();
+  });
+});
+
+describe('แจ้งเตือน LINE (เลือกเปิด/ปิดทีละชนิด · จดประวัติ · โควต้า)', () => {
+  let staff = '';
+  let who = 0;
+  let rid = 0;
+  const logs = async (type?: string) => (await call('POST', '/notification/logs', { type: type ?? '' })).data.resultList as any[];
+
+  it('ตั้งต้น: 6 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
+    staff = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    assert.equal((await call('POST', '/notification/templates', {}, staff)).http, 403);
+    const t = (await call('POST', '/notification/templates', {})).data;
+    assert.equal(t.templates.length, 6);
+    const on = Object.fromEntries(t.templates.map((x: any) => [x.type, x.is_enabled]));
+    assert.deepEqual(on, { CALLED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, SUBMITTED: false, REOPENED: false });
+    // ข้อความตั้งต้นไม่มีชื่อผู้ป่วย (PDPA)
+    assert.ok(t.templates.every((x: any) => !/patient_name|ชื่อผู้ป่วย/.test(x.body)));
+  });
+
+  it('เรียกคิวผู้ขอจำลอง → จด SKIPPED (ผู้ขอจำลอง) · ปิดชนิดนี้ → ไม่จดอะไรเพิ่ม · เปิดใหม่จดอีก', async () => {
+    await db('notification_log').delete(); // เริ่มนับใหม่ (เทสต์ก่อนหน้ามีการเรียกคิวที่จดไว้แล้ว)
+    who = (await call('POST', '/dev/mock/create', { full_name: 'ผู้ขอแจ้งเตือน', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0811111111' })).data.id;
+    rid = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย แจ้งเตือน', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    assert.equal((await logs('SUBMITTED')).length, 0); // SUBMITTED ปิดอยู่
+    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff)).http, 200);
+    let l = await logs('CALLED');
+    assert.equal(l.length, 1);
+    assert.equal(l[0].status, 'SKIPPED');
+    assert.match(l[0].error_message, /ผู้ขอจำลอง/);
+    assert.equal(l[0].request_no, `BQ${String(rid).padStart(6, '0')}`);
+
+    const t = (await call('POST', '/notification/templates', {})).data.templates.find((x: any) => x.type === 'CALLED');
+    assert.equal((await call('POST', '/notification/save', { type: 'CALLED', title: t.title, body: t.body, is_enabled: false })).http, 200);
+    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'REQUEUE' }, staff)).http, 200);
+    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff)).http, 200);
+    assert.equal((await logs('CALLED')).length, 1, 'ปิดชนิดแล้วต้องไม่จด/ไม่ส่ง');
+    assert.equal((await logs('REQUEUED')).length, 1); // ชนิดอื่นยังทำงาน
+    await call('POST', '/notification/save', { type: 'CALLED', title: t.title, body: t.body, is_enabled: true });
+    await call('POST', '/request/transition', { id: rid, action: 'REQUEUE' }, staff);
+    await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff);
+    assert.equal((await logs('CALLED')).length, 2);
+  });
+
+  it('ผู้ขอกดเอง (ยกเลิก/ยืนยัน) ไม่แจ้งกลับ · เจ้าหน้าที่ยกเลิก → แจ้ง', async () => {
+    await call('POST', '/dev/as/respond', { requester_id: who, id: rid, accept: true });
+    assert.equal((await logs('CONFIRMED')).length, 0);
+    const before = (await logs('CANCELLED')).length;
+    const r2 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ยกเลิกเอง', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    await call('POST', '/dev/as/cancel', { requester_id: who, id: r2 });
+    assert.equal((await logs('CANCELLED')).length, before, 'ผู้ขอยกเลิกเองไม่ส่ง');
+    const r3 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ถูกยกเลิก', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    await call('POST', '/request/transition', { id: r3, action: 'CANCEL' }, staff);
+    assert.equal((await logs('CANCELLED')).length, before + 1);
+  });
+
+  it('ส่งจริง (จำลอง LINE ด้วย fetch ปลอม): SENT / LINE ปฏิเสธ = FAILED / โควต้าเต็ม = SKIPPED · ผู้ใช้ LINE จริงใช้ข้อความจาก template', async () => {
+    const save = (values: Record<string, unknown>) => call('POST', '/setting/save', { values });
+    assert.equal((await save({ connection_mode: 'DEV_TUNNEL', line_channel_token: 'tok-ABC', liff_id: '1234-abcd' })).http, 200);
+    const hosp = (await db('hospital').where({ code: '11206' }).first()).id;
+    const now = new Date().toISOString();
+    const [reqId] = await db('requester').insert({ line_user_id: 'U-real-1', full_name: 'ผู้ขอจริง', phone: '0800000000', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now }).then(async () => [(await db('requester').where({ line_user_id: 'U-real-1' }).first()).id]);
+    const mkReq = async (name: string) => {
+      const id = (await call('POST', '/request/add', { hospital_id: hosp, requester_id: reqId, requester_name: 'x', patient_name: name, color_code: 'RED' }, staff)).data.id as number;
+      return id;
+    };
+    const realFetch = globalThis.fetch;
+    const sent: { url: string; body: any; auth: string }[] = [];
+    let respond: () => { ok: boolean; status: number; json: unknown } = () => ({ ok: true, status: 200, json: {} });
+    globalThis.fetch = (async (url: any, init: any) => {
+      if (!String(url).startsWith('https://api.line.me')) return realFetch(url, init);
+      const r = respond();
+      sent.push({ url: String(url), body: JSON.parse(init.body), auth: init.headers.Authorization });
+      return { ok: r.ok, status: r.status, json: async () => r.json } as Response;
+    }) as typeof fetch;
+    try {
+      const a1 = await mkReq('ผู้ป่วย ส่งจริง1');
+      await call('POST', '/request/transition', { id: a1, action: 'CALL' }, staff);
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0]!.url, 'https://api.line.me/v2/bot/message/push');
+      assert.equal(sent[0]!.auth, 'Bearer tok-ABC');
+      assert.equal(sent[0]!.body.to, 'U-real-1');
+      const text = JSON.stringify(sent[0]!.body.messages[0]);
+      assert.ok(text.includes('ถึงคิวของคุณแล้ว') && text.includes(`BQ${String(a1).padStart(6, '0')}`));
+      assert.ok(!text.includes('ผู้ป่วย ส่งจริง1'), 'ห้ามมีชื่อผู้ป่วยในข้อความ LINE');
+      assert.ok(text.includes('https://liff.line.me/1234-abcd'));
+      assert.equal((await logs('CALLED'))[0].status, 'SENT');
+
+      respond = () => ({ ok: false, status: 400, json: { message: 'Invalid reply token' } });
+      const a2 = await mkReq('ผู้ป่วย ส่งจริง2');
+      await call('POST', '/request/transition', { id: a2, action: 'CALL' }, staff);
+      const failed = (await logs('CALLED'))[0];
+      assert.equal(failed.status, 'FAILED');
+      assert.match(failed.error_message, /Invalid reply token/);
+      assert.equal((await call('POST', '/request/transition', { id: a2, action: 'CONFIRM', via: 'PHONE' }, staff)).http, 200, 'ส่ง LINE ล้มต้องไม่กระทบงานหลัก');
+
+      respond = () => ({ ok: true, status: 200, json: {} });
+      await save({ line_monthly_quota: 1 }); // ส่งไปแล้ว 1 ข้อความ → เต็ม
+      const before = sent.length;
+      const a3 = await mkReq('ผู้ป่วย ส่งจริง3');
+      await call('POST', '/request/transition', { id: a3, action: 'CALL' }, staff);
+      assert.equal(sent.length, before, 'โควต้าเต็มต้องไม่เรียก LINE');
+      const skipped = (await logs('CALLED'))[0];
+      assert.equal(skipped.status, 'SKIPPED');
+      assert.match(skipped.error_message, /โควต้า/);
+      const s = (await call('POST', '/notification/summary', {})).data;
+      assert.equal(s.sent, 1);
+      assert.equal(s.failed, 1);
+      assert.equal(s.live, true);
+      assert.equal(s.near_limit, true);
+    } finally {
+      globalThis.fetch = realFetch;
+      await save({ connection_mode: 'LOCAL', line_channel_token: '', line_monthly_quota: 300, liff_id: '' });
+    }
+  });
+
+  it('สรุปเดือนนี้ + แก้ข้อความ: หัวข้อว่าง → 400', async () => {
+    const s = (await call('POST', '/notification/summary', {})).data;
+    assert.equal(s.sent, 1); // จากเทสต์ส่งจริงด้านบน
+    assert.ok(s.skipped >= 3);
+    assert.equal(s.live, false); // กลับเป็นโหมด LOCAL แล้ว
+    assert.equal(s.quota, 300);
+    assert.equal((await call('POST', '/notification/save', { type: 'CALLED', title: '', body: 'x', is_enabled: true })).http, 400);
+    assert.equal((await call('POST', '/notification/save', { type: 'NOPE', title: 'x', body: 'x', is_enabled: true })).http, 400);
+    await call('POST', '/dev/mock/clear', {});
   });
 });
 
@@ -807,6 +999,92 @@ describe('migration ของตารางคำขอ', () => {
     await db('bed_request').insert(row);
     await assert.rejects(() => db('bed_request').insert(row));
     await db('bed_request').where({ import_key: 'K1' }).delete();
+  });
+});
+
+describe('ยืนยันตัวตน 2 ชั้น (2FA)', () => {
+  let ticket = '';
+  let secret = '';
+  let recovery: string[] = [];
+  const first = (r: { headers: Headers }) => (r.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+
+  it('role ที่ถูกบังคับ: รหัสผ่านถูกยังไม่ได้ session ต้องผูกแอปก่อน', async () => {
+    const add = await call('POST', '/user/add', { username: 'mfauser', password: 'password123', full_name: 'ผู้ใช้ 2FA', role: 'STAFF', is_active: 'Y' });
+    assert.equal(add.http, 201);
+    config.mfaRequiredRoles = ['STAFF'];
+    const r = await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' });
+    assert.equal(r.data.mfa, 'setup');
+    assert.ok(!(r.headers.get('set-cookie') ?? '').includes('app_session='));
+    ticket = first(r);
+    assert.ok(ticket.startsWith('app_mfa='));
+    // ticket ใช้เป็น session ไม่ได้
+    assert.equal((await call('POST', '/hospital/search', {}, ticket)).http, 401);
+    // ไม่มี ticket → ผูกแอปไม่ได้
+    assert.equal((await call('POST', '/auth/mfa/setup', {}, false)).http, 401);
+  });
+
+  it('ผูกแอป: ได้ QR + secret · รหัสผิดไม่ผ่าน · รหัสถูกได้ session + รหัสสำรอง 10 ชุด', async () => {
+    const { generateSecret, totpAt, currentStep } = await import('../src/core/totp');
+    void generateSecret;
+    const setup = await call('POST', '/auth/mfa/setup', {}, ticket);
+    assert.equal(setup.http, 200);
+    assert.ok(String(setup.data.qr).startsWith('data:image/png;base64,'));
+    secret = String(setup.data.secret).replace(/\s/g, '');
+    // เรียกซ้ำได้ secret เดิม (รีเฟรชหน้าแล้ว QR ไม่เปลี่ยน)
+    assert.equal(String((await call('POST', '/auth/mfa/setup', {}, ticket)).data.secret).replace(/\s/g, ''), secret);
+    assert.equal((await call('POST', '/auth/mfa/enable', { code: '000000' }, ticket)).http, 400);
+    const ok = await call('POST', '/auth/mfa/enable', { code: totpAt(secret, currentStep()) }, ticket);
+    assert.equal(ok.http, 200);
+    assert.equal(ok.data.recovery_codes.length, 10);
+    recovery = ok.data.recovery_codes;
+    assert.ok((ok.headers.get('set-cookie') ?? '').includes('app_session='));
+    const stored = await db('users').where({ username: 'mfauser' }).first();
+    assert.ok(stored.totp_secret_enc && !String(stored.totp_secret_enc).includes(secret), 'secret ต้องเข้ารหัสในฐานข้อมูล');
+    const hashes = JSON.stringify(await db('user_recovery_code').select('*'));
+    assert.ok(recovery.every((c) => !hashes.includes(c)), 'รหัสสำรองต้องเก็บเป็น hash');
+  });
+
+  it('ล็อกอินครั้งถัดไป: ต้องกรอกรหัส · ใช้รหัสเดิมซ้ำไม่ได้ · รหัสสำรองใช้ได้ครั้งเดียว', async () => {
+    const { totpAt, currentStep } = await import('../src/core/totp');
+    // ล็อกอินครั้งก่อนใช้ step ปัจจุบันไปแล้ว → ใช้รหัสของ step เดิมซ้ำไม่ได้ (กัน replay) ต้องรอ step ถัดไป
+    let r = await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' });
+    assert.equal(r.data.mfa, 'verify');
+    let t = first(r);
+    assert.equal((await call('POST', '/auth/mfa/verify', { code: totpAt(secret, currentStep()) }, t)).http, 400);
+    const good = await call('POST', '/auth/mfa/verify', { code: totpAt(secret, currentStep() + 1) }, t);
+    assert.equal(good.http, 200);
+    assert.ok((good.headers.get('set-cookie') ?? '').includes('app_session='));
+    // รหัสสำรอง
+    r = await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' });
+    t = first(r);
+    const rc = await call('POST', '/auth/mfa/verify', { recovery_code: recovery[0] }, t);
+    assert.equal(rc.http, 200);
+    assert.equal(rc.data.recovery_left, 9);
+    r = await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' });
+    assert.equal((await call('POST', '/auth/mfa/verify', { recovery_code: recovery[0] }, first(r))).http, 400);
+  });
+
+  it('รีเซ็ต 2FA: session เก่าใช้ไม่ได้ทันที และล็อกอินครั้งถัดไปต้องผูกแอปใหม่', async () => {
+    const r = await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' });
+    // ช่วงเวลาปัจจุบันถูกใช้ไปแล้ว (กัน replay) → เข้าด้วยรหัสสำรองชุดที่ 2
+    const v = await call('POST', '/auth/mfa/verify', { recovery_code: recovery[1] }, first(r));
+    const sess = first(v);
+    assert.equal((await call('GET', '/auth/me', undefined, sess)).http, 200);
+    const u = await db('users').where({ username: 'mfauser' }).first();
+    assert.equal((await call('POST', '/user/reset-mfa', { id: u.id })).http, 200);
+    assert.equal((await call('GET', '/auth/me', undefined, sess)).http, 401);
+    assert.equal((await call('POST', '/auth/login', { username: 'mfauser', password: 'password123' })).data.mfa, 'setup');
+    const list = await call('POST', '/user/search', {});
+    assert.equal(list.data.resultList.find((x: { username: string }) => x.username === 'mfauser').mfa_state, 'PENDING');
+    config.mfaRequiredRoles = [];
+  });
+
+  it('ไม่ถูกบังคับ → ล็อกอินด้วยรหัสผ่านอย่างเดียวได้เหมือนเดิม (บัญชีที่ยังไม่ผูก)', async () => {
+    await call('POST', '/user/add', { username: 'plain1', password: 'password123', full_name: 'ไม่ใช้ 2FA', role: 'STAFF', is_active: 'Y' });
+    const r = await call('POST', '/auth/login', { username: 'plain1', password: 'password123' });
+    assert.equal(r.http, 200);
+    assert.equal(r.data.mfa, null);
+    assert.ok((r.headers.get('set-cookie') ?? '').startsWith('app_session='));
   });
 });
 

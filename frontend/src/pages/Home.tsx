@@ -3,11 +3,12 @@
  * widget มาจาก POST /api/dashboard/widget/data · ผู้ดูแลกด "จัดวาง" เพื่อ ลากวาง/ปรับกว้าง/ซ่อน/เพิ่ม/แก้/ทำซ้ำ/ลบ แล้วกด "บันทึกการจัดวาง"
  * (widget ใช้ร่วมกันทุกคน — ผู้ใช้ทั่วไปเห็นอย่างเดียว) · ส่งออก Excel ได้ทั้งหน้าและรายกราฟ
  */
-import { AlertTriangle, Download, LayoutGrid, Plus } from 'lucide-react';
+import { AlertTriangle, FileSpreadsheet, LayoutGrid, Plus } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dashboardApi, type DashboardSummary, type WidgetSaveInput, type WidgetWithResult } from '../api/dashboardApi';
 import { settingApi, type UiSettings } from '../api/settingApi';
 import { Button } from '../components/Button';
+import { ExportDialog } from '../components/ExportDialog';
 import { usePopup } from '../components/Popup';
 import { Spinner } from '../components/Spinner';
 import { WidgetBuilder, BLANK } from '../components/widgets/WidgetBuilder';
@@ -44,6 +45,7 @@ export default function Home() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [builder, setBuilder] = useState<WidgetSaveInput | null>(null);
+  const [exporting, setExporting] = useState(false);
   const dragId = useRef<number | null>(null);
   const [dragging, setDragging] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
@@ -145,7 +147,6 @@ export default function Home() {
     setDirty(false);
     await loadWidgets(days!, edit && isAdmin);
   }
-  const exportAll = () => void dashboardApi.exportXlsx({ days: days! });
 
   return (
     <div className="flex flex-col gap-4">
@@ -178,8 +179,8 @@ export default function Home() {
         <p className="text-sm text-muted-foreground">{edit ? 'โหมดจัดวาง: ลากการ์ดเพื่อสลับตำแหน่ง หรือใช้ปุ่มลูกศร' : `ข้อมูลนับจากช่วง ${days} วันล่าสุด`}</p>
         <div className="flex flex-wrap gap-2">
           {!edit && (
-            <Button variant="outline" size="sm" onClick={exportAll}>
-              <Download className="size-4" /> ส่งออก Excel ทั้งหน้า
+            <Button variant="outline" size="sm" onClick={() => setExporting(true)}>
+              <FileSpreadsheet className="size-4" /> ส่งออก Excel
             </Button>
           )}
           {isAdmin && !edit && (
@@ -224,7 +225,6 @@ export default function Home() {
               onEdit={() => setBuilder(toInput(w))}
               onDuplicate={() => setBuilder(toInput(w, true))}
               onDelete={() => void remove(w)}
-              onExport={() => void dashboardApi.exportXlsx({ days: days!, ids: [w.id] })}
               dnd={{
                 draggable: true,
                 onDragStart: () => {
@@ -247,6 +247,7 @@ export default function Home() {
         </section>
       )}
 
+      <ExportDialog open={exporting} onClose={() => setExporting(false)} initial={['summary', 'widgets']} days={days} />
       {builder && <WidgetBuilder open initial={builder} dashboardDays={days} onClose={() => setBuilder(null)} onSaved={() => void afterBuilderSaved()} />}
     </div>
   );

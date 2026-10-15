@@ -4,6 +4,7 @@
  * ทำงานแทนผู้ขอที่เป็น "ผู้ขอจำลอง" (line_user_id ขึ้นต้น MOCK-) เท่านั้น — สั่งแทนผู้ขอจริงไม่ได้
  * ตัวตนของผู้ขอจำลองยืนยันด้วย session ของ DEV ที่ล็อกอินอยู่ (ไม่มี endpoint สาธารณะที่ปลอมตัวเป็นผู้ขอได้)
  *
+ *   POST /api/dev/system        {}                              ข้อมูลระบบ (เวอร์ชัน/ฐานข้อมูล/โหมด/จำนวนข้อมูล) สำหรับหน้า "ระบบและเครื่องมือ"
  *   POST /api/dev/mock/list     {}                              รายชื่อผู้ขอจำลอง
  *   POST /api/dev/mock/create   { full_name, hospital_code, hospital_name, phone, phone2? }
  *   POST /api/dev/mock/clear    {}                              ลบผู้ขอจำลองทั้งหมด + คำขอของพวกเขา
@@ -12,9 +13,23 @@
 import { randomBytes } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { config } from '../../core/config';
+import { db } from '../../core/db';
 import { idField, notFound, ok, parse } from '../../core/http';
+import { getSetting } from '../../core/settings';
 import { requesterProfileDto, respondDto, submitDto } from '../request/RequestDto';
 import { requestRepository, requesterService } from '../request';
+
+/** เวอร์ชันฐานข้อมูล (MariaDB/MySQL/PostgreSQL ต่างคำสั่งกัน) */
+async function dbVersion(): Promise<string> {
+  try {
+    if (config.db.client === 'postgres') return String(((await db.raw('select version() as v')) as { rows: { v: string }[] }).rows[0]?.v ?? '-');
+    const r = (await db.raw('select version() as v')) as [{ v: string }[]];
+    return String(r[0][0]?.v ?? '-');
+  } catch {
+    return '-';
+  }
+}
 
 const asDto = <T extends z.ZodRawShape>(shape: T) => z.object({ requester_id: idField, ...shape });
 
@@ -26,6 +41,24 @@ async function mockLine(requesterId: number): Promise<{ line: string; name: stri
   if (!r || !r.line_user_id?.startsWith('MOCK-')) throw notFound('ไม่พบผู้ขอจำลองนี้ (ใช้ได้เฉพาะผู้ขอจำลอง)');
   return { line: r.line_user_id, name: r.full_name };
 }
+
+/** ข้อมูลระบบสำหรับนักพัฒนา (ไม่มีค่าลับ) */
+devRouter.post('/system', async (_req: Request, res: Response) => {
+  const count = async (table: string) => Number(((await db(table).count({ n: '*' }).first()) as { n: number | string }).n);
+  res.json(
+    ok({
+      env: config.env,
+      node: process.version,
+      db_client: config.db.client,
+      db_name: config.db.database,
+      db_version: await dbVersion(),
+      uptime_sec: Math.round(process.uptime()),
+      mode: await getSetting<string>('connection_mode'),
+      mfa_required_roles: config.mfaRequiredRoles,
+      counts: { users: await count('users'), requesters: await count('requester'), requests: await count('bed_request'), hospitals: await count('hospital'), logs: await count('audit_logs'), notifications: await count('notification_log') },
+    }),
+  );
+});
 
 devRouter.post('/mock/list', async (_req: Request, res: Response) => {
   const rows = await requestRepository.mockRequesters();

@@ -4,11 +4,12 @@ import { TextField } from '../components/Fields';
 import { PageCard } from '../components/PageCard';
 import { useSession } from '../lib/session';
 import { useState } from 'react';
+import { MfaSetup, MfaVerify } from './LoginMfa';
 
 type LoginForm = { username: string; password: string };
 
 export default function Login() {
-  const { login, app } = useSession();
+  const { login, app, pendingMfa } = useSession();
   const form = useForm<LoginForm>({ defaultValues: { username: '', password: '' } });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -20,6 +21,10 @@ export default function Login() {
     setBusy(false);
     if (!res.ok) setError(res.message);
   });
+
+  // รหัสผ่านถูกแล้ว แต่บัญชีต้องยืนยันตัวตน 2 ชั้นต่อ
+  if (pendingMfa?.stage === 'verify') return <MfaVerify who={pendingMfa.who} />;
+  if (pendingMfa?.stage === 'setup') return <MfaSetup who={pendingMfa.who} />;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

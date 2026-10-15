@@ -31,15 +31,24 @@ export const menu: MenuGroup[] = [
     children: [
       { label: 'ผู้ใช้งาน', path: '/user' },
       { label: 'ตั้งค่าระบบ', path: '/setting' },
+      { label: 'ข้อความแจ้งเตือน', path: '/notification' },
       { label: 'บันทึกการใช้งาน', path: '/log' },
-      { label: 'เปลี่ยนรหัสผ่าน', path: '/account' },
     ],
   },
-  { label: 'นักพัฒนา', icon: Code, children: [{ label: 'ผู้ขอจำลอง', path: '/dev' }] },
+  {
+    label: 'นักพัฒนา',
+    icon: Code,
+    children: [
+      { label: 'การเชื่อมต่อ LINE', path: '/connection' },
+      { label: 'ผู้ขอจำลอง', path: '/dev' },
+      { label: 'ระบบและเครื่องมือ', path: '/system' },
+    ],
+  },
 ];
 
 /** ชื่อหน้าสำหรับแสดงบนแถบหัว (Header) — หาจากเมนูที่ path ตรงกับ URL ปัจจุบัน */
 export function titleOf(pathname: string): string {
+  if (pathname.startsWith('/account')) return 'บัญชีของฉัน'; // เปิดจากเมนูผู้ใช้มุมขวาบน (ไม่อยู่ในเมนูซ้าย)
   const items: MenuItem[] = menu.flatMap((g) => (g.path ? [{ label: g.label, path: g.path }] : (g.children ?? [])));
   const hit = items.find((i) => (i.path === '/' ? pathname === '/' : pathname === i.path || pathname.startsWith(`${i.path}/`)));
   return hit?.label ?? '';

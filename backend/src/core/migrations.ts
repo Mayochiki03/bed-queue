@@ -59,4 +59,33 @@ export const coreMigrations: Migration[] = [
       await db.schema.dropTableIfExists('app_setting');
     },
   },
+  {
+    // ยืนยันตัวตน 2 ชั้น (TOTP): คอลัมน์ในตาราง users + ตารางรหัสสำรอง
+    name: '20261015_01_core_users_mfa',
+    async up(db) {
+      await db.schema.alterTable('users', (t) => {
+        t.text('totp_secret_enc').nullable(); // secret เข้ารหัสด้วย APP_SECRET_KEY (ไม่เก็บตัวจริง)
+        t.string('totp_enabled_at', 30).nullable(); // มีค่า = ผูกแอปแล้ว
+        t.bigInteger('totp_last_step').nullable(); // ช่วงเวลาล่าสุดที่ใช้แล้ว กันใช้รหัสเดิมซ้ำ
+        t.boolean('totp_required').notNullable().defaultTo(false); // admin ติ๊กบังคับรายคน
+        t.integer('session_version').notNullable().defaultTo(0); // เพิ่มค่า = ตัด session ทุกเครื่อง
+      });
+      await db.schema.createTable('user_recovery_code', (t) => {
+        t.increments('id');
+        t.integer('user_id').notNullable().index();
+        t.string('code_hash', 64).notNullable(); // HMAC ของรหัสสำรอง (ไม่เก็บตัวจริง)
+        t.string('used_at', 30).nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.dropTableIfExists('user_recovery_code');
+      await db.schema.alterTable('users', (t) => {
+        t.dropColumn('totp_secret_enc');
+        t.dropColumn('totp_enabled_at');
+        t.dropColumn('totp_last_step');
+        t.dropColumn('totp_required');
+        t.dropColumn('session_version');
+      });
+    },
+  },
 ];

@@ -14,14 +14,14 @@ export type SettingItem = {
   value: string | number | boolean;
   is_set: boolean;
 };
-export type UiSettings = { confirm_timeout_hours: number; queue_display: 'both' | 'color' | 'all'; dashboard_default_days: number; dashboard_top_n: number };
+export type UiSettings = { confirm_timeout_hours: number; queue_display: 'all' | 'color'; dashboard_default_days: number; dashboard_top_n: number; pdpa_notice: string };
 
-export type TestKind = 'database' | 'encryption' | 'time' | 'public_url' | 'line_token';
+export type TestKind = 'database' | 'encryption' | 'time' | 'public_url' | 'line_token' | 'line_quota' | 'line_push';
 export type TestResult = { ok: boolean; title: string; detail: string };
 
 export const settingApi = {
-  test: (kind: TestKind) => api.post<TestResult>('/setting/test', { kind }),
-  list: () => api.post<SettingItem[]>('/setting/list', {}),
+  test: (kind: TestKind, line_user_id?: string) => api.post<TestResult>('/setting/test', { kind, ...(line_user_id ? { line_user_id } : {}) }),
+  list: (categories: string[] = []) => api.post<SettingItem[]>('/setting/list', { categories }),
   save: (values: Record<string, unknown>) => api.post<null>('/setting/save', { values }),
   ui: () => api.post<UiSettings>('/setting/ui', {}),
 };

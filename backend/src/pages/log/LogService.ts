@@ -5,7 +5,7 @@ import type { LogRepository } from './LogRepository';
 export class LogService {
   constructor(private repo: LogRepository) {}
 
-  search({ q, page, action, pageNo, pageSize }: LogSearchDto) {
-    return this.repo.search({ q, page, action }, { pageNo, pageSize });
+  search({ q, page, action, date_from, date_to, pageNo, pageSize }: LogSearchDto) {
+    return this.repo.search({ q, page, action, date_from, date_to }, { pageNo, pageSize });
   }
 }

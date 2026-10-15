@@ -37,7 +37,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     });
     const json = (await res.json().catch(() => null)) as { status?: ApiStatus; message?: string; data?: T; fields?: Record<string, string> } | null;
     if (!json) return { ok: false, status: 'ERROR', message: `เซิร์ฟเวอร์ตอบกลับผิดรูปแบบ (${res.status}) — ตรวจว่า API รันอยู่`, data: null };
-    if (res.status === 401 && !url.startsWith('/auth/login')) window.dispatchEvent(new Event(EXPIRED_EVENT));
+    if (res.status === 401 && !url.startsWith('/auth/login') && !url.startsWith('/auth/mfa')) window.dispatchEvent(new Event(EXPIRED_EVENT));
     return {
       ok: res.ok && json.status === 'SUCCESS',
       status: json.status ?? 'ERROR',

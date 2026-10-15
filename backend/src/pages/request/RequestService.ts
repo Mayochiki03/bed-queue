@@ -7,7 +7,7 @@
  */
 import { badRequest, conflict, notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
-import { TRANSITIONS, type BedRequest, type BoardItem, type Requester, type Status } from './Request';
+import { TRANSITIONS, type BedRequest, type BoardItem, type EventChange, type Requester, type Status } from './Request';
 import type { RequestAddDto, RequestSearchDto, RequestTransitionDto, RequestUpdateDto } from './RequestDto';
 import type { RequestRepository } from './RequestRepository';
 
@@ -15,8 +15,13 @@ const DAY = 86_400_000;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 export type Actor = { id: number; full_name: string };
 
+export type NotifyHook = (type: 'SUBMITTED' | 'CALLED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED', requestId: number, toRequesterId?: number) => Promise<void>;
+
 export class RequestService {
   constructor(private repo: RequestRepository) {}
+
+  /** จุดต่อกับระบบแจ้งเตือน LINE (ผูกที่ pages/notification/index.ts) — ไม่ผูก = ไม่ส่งอะไร */
+  readonly hooks: { notify?: NotifyHook } = {};
 
   // ---------- บอร์ดคิว ----------
   async board(now = new Date()): Promise<{ now: string; timeout_hours: number; items: BoardItem[] }> {
@@ -69,8 +74,11 @@ export class RequestService {
     if (!row) throw notFound('ไม่พบคำขอนี้');
     const [hospital, events, requester] = await Promise.all([this.repo.hospital(row.hospital_id), this.repo.events(id), row.requester_id ? this.repo.requesterById(row.requester_id) : undefined]);
     const pos = row.status === 'WAITING' ? (await this.positionsOf([id])).get(id) : undefined;
+    const names = await this.repo.userNames([row.called_by, row.resolved_by]);
     return {
       ...row,
+      called_by_name: row.called_by ? (names.get(row.called_by) ?? null) : null,
+      resolved_by_name: row.resolved_by ? (names.get(row.resolved_by) ?? null) : null,
       hospital_code: hospital?.code ?? '',
       hospital_name: hospital?.name ?? '',
       position_all: pos?.all ?? null,
@@ -169,9 +177,25 @@ export class RequestService {
     if (changed.length === 0) return { id };
     await this.repo.transaction(async (trx) => {
       await this.repo.update(id, { ...patch, ...(dto.hospital_id !== cur.hospital_id ? { requester_id: null } : {}) }, trx);
-      await this.repo.addEvent({ request_id: id, event: 'EDITED', by_user_id: actor.id, by_label: actor.full_name, via: 'ADMIN', detail: `แก้ไข: ${changed.join(', ')}` }, trx);
+      const diff = await this.describeChanges(changed as string[], cur as unknown as Record<string, unknown>, patch as Record<string, unknown>);
+      await this.repo.addEvent({ request_id: id, event: 'EDITED', by_user_id: actor.id, by_label: actor.full_name, via: 'ADMIN', detail: `แก้ไข ${diff.length} รายการ: ${diff.map((c) => c.label).join(', ')}`, changes: diff }, trx);
     });
     return { id };
+  }
+
+  /** ค่าก่อน → ค่าหลัง ของแต่ละฟิลด์ที่ถูกแก้ (ไว้ตรวจสอบย้อนหลังว่าใครแก้อะไรจากอะไร) */
+  private async describeChanges(fields: string[], before: Record<string, unknown>, after: Record<string, unknown>): Promise<EventChange[]> {
+    const show = async (field: string, v: unknown): Promise<string | null> => {
+      if (v === null || v === undefined || v === '') return null;
+      if (field === 'hospital_id') {
+        const h = await this.repo.hospital(Number(v));
+        return h ? `${h.name} (${h.code})` : String(v);
+      }
+      return String(v).slice(0, 300);
+    };
+    const out: EventChange[] = [];
+    for (const f of fields) out.push({ field: f, label: FIELD_LABEL[f] ?? f, from: await show(f, before[f]), to: await show(f, after[f]) });
+    return out;
   }
 
   // ---------- เปลี่ยนสถานะ ----------
@@ -212,6 +236,9 @@ export class RequestService {
       if (!okUpdate) throw conflict('มีคนเปลี่ยนสถานะคำขอนี้ไปก่อนแล้ว กรุณาโหลดหน้าใหม่');
       await this.repo.addEvent({ request_id: dto.id, event: rule.event, from_status: cur.status, to_status: rule.to, by_user_id: by.user_id, by_label: by.label, via: dto.via, detail: dto.note }, trx);
     });
+    // แจ้งผู้ขอทาง LINE เฉพาะที่เจ้าหน้าที่เป็นคนทำ (ผู้ขอกดเองไม่ต้องแจ้งกลับ)
+    const kind = ({ CALL: 'CALLED', REQUEUE: 'REQUEUED', REOPEN: 'REOPENED', CANCEL: 'CANCELLED' } as const)[dto.action as 'CALL' | 'REQUEUE' | 'REOPEN' | 'CANCEL'];
+    if (kind && by.user_id != null) await this.hooks.notify?.(kind, dto.id);
     return { id: dto.id, status: rule.to };
   }
 
@@ -226,10 +253,42 @@ export class RequestService {
     if (to.id === cur.requester_id) throw badRequest('เป็นผู้ขอคนเดิมอยู่แล้ว', { requester_id: 'เป็นคนเดิม' });
     await this.repo.transaction(async (trx) => {
       await this.repo.update(id, { requester_id: to.id, requester_name: to.full_name, requester_phone: to.phone, requester_phone2: to.phone2 }, trx);
-      await this.repo.addEvent({ request_id: id, event: 'TRANSFERRED', by_user_id: actor.id, by_label: actor.full_name, via: 'ADMIN', detail: `โอนจาก ${cur.requester_name} ไป ${to.full_name}` }, trx);
+      await this.repo.addEvent(
+        {
+          request_id: id,
+          event: 'TRANSFERRED',
+          by_user_id: actor.id,
+          by_label: actor.full_name,
+          via: 'ADMIN',
+          detail: `โอนจาก ${cur.requester_name} ไป ${to.full_name}`,
+          changes: [
+            { field: 'requester_name', label: FIELD_LABEL.requester_name, from: cur.requester_name, to: to.full_name },
+            { field: 'requester_phone', label: FIELD_LABEL.requester_phone, from: cur.requester_phone, to: to.phone },
+          ],
+        },
+        trx,
+      );
     });
+    await this.hooks.notify?.('TRANSFERRED', id, to.id); // แจ้งผู้ขอคนใหม่ว่ามีเคสโอนมาให้
     return { id };
   }
 }
+
+export const FIELD_LABEL: Record<string, string> = {
+  hospital_id: 'โรงพยาบาล',
+  requester_name: 'ชื่อผู้ขอ',
+  requester_phone: 'เบอร์ผู้ขอ',
+  requester_phone2: 'เบอร์สำรองผู้ขอ',
+  patient_name: 'ชื่อผู้ป่วย',
+  patient_gender: 'เพศ',
+  patient_age: 'อายุ',
+  patient_province: 'จังหวัด',
+  patient_phone: 'เบอร์ผู้ป่วย/ญาติ',
+  color_code: 'สี',
+  substance_code: 'ประเภทสารเสพติด',
+  reason_code: 'เหตุผลการส่งต่อ',
+  note: 'หมายเหตุ',
+  submitted_at: 'เวลาที่ส่งคำขอ',
+};
 
 const statusLabel = (s: Status) => ({ WAITING: 'รอคิว', CALLED: 'เรียกแล้ว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก' })[s];

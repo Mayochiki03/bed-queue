@@ -6,16 +6,15 @@
  *   POST /api/dashboard/widget/save     { id?, ...config }           สร้าง/แก้ widget (ADMIN)
  *   POST /api/dashboard/widget/delete   { id }                       ลบ widget (ADMIN)
  *   POST /api/dashboard/widget/layout   { items: [...] }             บันทึกลำดับ/ขนาด/การซ่อน (ADMIN)
- *   POST /api/dashboard/widget/export   { days?, ids?, config? }     ดาวน์โหลด Excel (ทุกคน)
+ *   (ส่งออก Excel ย้ายไปที่ POST /api/export/build ปุ่มเดียวเลือกข้อมูลได้)
  */
 import { Router, type Request, type Response } from 'express';
 import { hasRole } from '../../core/pages';
 import { requireRole } from '../../core/auth';
 import { ok, parse } from '../../core/http';
-import { sendXlsx } from '../../core/xlsx';
 import { dashboardDto } from './DashboardDto';
 import type { DashboardService } from './DashboardService';
-import { widgetDataDto, widgetExportDto, widgetIdDto, widgetLayoutDto, widgetPreviewDto, widgetSaveDto } from './WidgetDto';
+import { widgetDataDto, widgetIdDto, widgetLayoutDto, widgetPreviewDto, widgetSaveDto } from './WidgetDto';
 import type { WidgetService } from './WidgetService';
 
 export class DashboardController {
@@ -27,7 +26,6 @@ export class DashboardController {
   ) {
     this.router.post('/summary', this.summary);
     this.router.post('/widget/data', this.widgetData);
-    this.router.post('/widget/export', this.widgetExport);
     this.router.post('/widget/preview', requireRole('ADMIN'), this.widgetPreview);
     this.router.post('/widget/save', requireRole('ADMIN'), this.widgetSave);
     this.router.post('/widget/delete', requireRole('ADMIN'), this.widgetDelete);
@@ -62,10 +60,5 @@ export class DashboardController {
   private widgetLayout = async (req: Request, res: Response) => {
     await this.widgets.saveLayout(parse(widgetLayoutDto, req.body).items);
     res.json(ok(null, 'บันทึกการจัดวางแล้ว'));
-  };
-
-  private widgetExport = async (req: Request, res: Response) => {
-    const { filename, buffer } = await this.widgets.exportXlsx(parse(widgetExportDto, req.body));
-    sendXlsx(res, filename, buffer);
   };
 }

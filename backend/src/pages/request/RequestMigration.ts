@@ -163,4 +163,18 @@ export const requestMigrations: Migration[] = [
       await db.schema.dropTableIfExists('line_message_log');
     },
   },
+  {
+    name: '20261014_31_request_event_changes',
+    async up(db) {
+      // เก็บ "ค่าก่อน → ค่าหลัง" ของทุกฟิลด์ที่ถูกแก้ (JSON) — detail เดิมเก็บได้แค่ชื่อฟิลด์
+      await db.schema.alterTable('request_event', (t) => {
+        t.text('changes').nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.alterTable('request_event', (t) => {
+        t.dropColumn('changes');
+      });
+    },
+  },
 ];

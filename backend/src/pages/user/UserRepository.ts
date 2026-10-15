@@ -6,7 +6,7 @@ import { db, insertGetId, nowIso, orWhereContains, whereContains } from '../../c
 import { paginate, type PageResult, type Paging } from '../../core/http';
 import type { User } from './User';
 
-const COLS = ['id', 'username', 'full_name', 'role', 'is_active', 'created_at', 'updated_at'];
+const COLS = ['id', 'username', 'full_name', 'role', 'is_active', 'totp_required', 'totp_enabled_at', 'created_at', 'updated_at'];
 
 export class UserRepository {
   search(f: { q: string; role: string }, paging: Paging): Promise<PageResult<User>> {
@@ -24,7 +24,7 @@ export class UserRepository {
     return db('users').where({ username }).select(COLS).first();
   }
 
-  async insert(d: { username: string; password: string; full_name: string; role: string; is_active: 'Y' | 'N' }): Promise<number> {
+  async insert(d: { username: string; password: string; full_name: string; role: string; is_active: 'Y' | 'N'; totp_required: 'Y' | 'N' }): Promise<number> {
     const now = nowIso();
     return insertGetId(db, 'users', {
       username: d.username,
@@ -32,13 +32,14 @@ export class UserRepository {
       full_name: d.full_name,
       role: d.role,
       is_active: d.is_active === 'Y',
+      totp_required: d.totp_required === 'Y',
       created_at: now,
       updated_at: now,
     });
   }
 
-  async update(id: number, d: { full_name: string; role: string; is_active: 'Y' | 'N' }): Promise<void> {
-    await db('users').where({ id }).update({ full_name: d.full_name, role: d.role, is_active: d.is_active === 'Y', updated_at: nowIso() });
+  async update(id: number, d: { full_name: string; role: string; is_active: 'Y' | 'N'; totp_required: 'Y' | 'N' }): Promise<void> {
+    await db('users').where({ id }).update({ full_name: d.full_name, role: d.role, is_active: d.is_active === 'Y', totp_required: d.totp_required === 'Y', updated_at: nowIso() });
   }
 
   async setPassword(id: number, password: string): Promise<void> {

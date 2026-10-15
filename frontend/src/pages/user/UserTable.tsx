@@ -8,6 +8,7 @@ import { FilterInput, FilterSelect } from '../../components/Fields';
 import { PageCard, PageTitle } from '../../components/PageCard';
 import { Pagination } from '../../components/Pagination';
 import { usePopup } from '../../components/Popup';
+import { MfaBadge } from './MfaBadge';
 import { useTableData } from '../../hooks/useTableData';
 import { MSG } from '../../lib/messages';
 import { hasRole, ROLE_LABEL, useSession } from '../../lib/session';
@@ -44,6 +45,7 @@ export default function UserTable() {
     },
     { header: 'ชื่อ-สกุล', cell: (r) => r.full_name, className: 'hidden sm:table-cell' },
     { header: 'สิทธิ์', cell: (r) => ROLE_LABEL[r.role], className: 'hidden sm:table-cell' },
+    { header: '2FA', className: 'hidden md:table-cell', cell: (r) => <MfaBadge state={r.mfa_state} /> },
     {
       header: 'สถานะ',
       className: 'hidden md:table-cell',
@@ -96,7 +98,7 @@ export default function UserTable() {
           </Button>
         }
       >
-        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} />
+        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} onRowClick={(r) => hasRole(me?.role, r.role) && navigate('/user/edit', { state: { id: r.id } })} />
         <Pagination paging={table.paging} onPage={table.goPage} onPageSize={table.changePageSize} />
       </PageCard>
     </>

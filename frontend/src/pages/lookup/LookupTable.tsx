@@ -86,7 +86,7 @@ export default function LookupTable() {
           </Button>
         }
       >
-        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} />
+        <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} onRowClick={(r) => navigate('/lookup/edit', { state: { id: r.id } })} />
         <Pagination paging={table.paging} onPage={table.goPage} onPageSize={table.changePageSize} />
       </PageCard>
     </>

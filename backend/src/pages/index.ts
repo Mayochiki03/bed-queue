@@ -7,8 +7,10 @@
 import type { PageDef } from '../core/pages';
 import { dashboardPage } from './dashboard';
 import { devPage } from './dev';
+import { exportPage } from './export';
 import { hospitalPage } from './hospital';
 import { logPage } from './log';
+import { notificationPage } from './notification';
 import { lookupPage } from './lookup';
 import { requestPage } from './request';
 import { settingPage } from './setting';
@@ -20,6 +22,8 @@ export const pages: PageDef[] = [
   lookupPage, // ข้อมูลหลัก: สี / สารเสพติด / เหตุผล
   requestPage, // คำขอเตียง (ตาราง — API มาใน Round 2)
   dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
+  exportPage, // ส่งออก Excel (รายงาน+กราฟ+ข้อมูลละเอียด)
+  notificationPage, // ข้อความแจ้งเตือน LINE (เลือกเปิด/ปิด + ประวัติการส่ง)
   userPage, // ผู้ใช้งาน
   devPage, // เมนูนักพัฒนา (ผู้ขอจำลอง) — DEV เท่านั้น
   logPage, // ดู audit log

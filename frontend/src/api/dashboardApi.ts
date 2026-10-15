@@ -28,5 +28,4 @@ export const dashboardApi = {
   save: (w: WidgetSaveInput) => api.post<{ id: number }>('/dashboard/widget/save', w),
   remove: (id: number) => api.post<null>('/dashboard/widget/delete', { id }),
   layout: (items: { id: number; sort_order: number; width: number; is_active: boolean }[]) => api.post<null>('/dashboard/widget/layout', { items }),
-  exportXlsx: (opts: { days?: number; ids?: number[]; config?: WidgetConfig }) => api.download('/dashboard/widget/export', opts, 'dashboard.xlsx'),
 };

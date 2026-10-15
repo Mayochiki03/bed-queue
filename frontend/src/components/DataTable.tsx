@@ -11,7 +11,14 @@ export type Column<T> = {
   className?: string;
 };
 
-type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (row: T) => string | number; loading?: boolean };
+type Props<T> = {
+  columns: Column<T>[];
+  rows: T[];
+  rowKey: (row: T) => string | number;
+  loading?: boolean;
+  /** กดที่ไหนก็ได้ในแถวเพื่อเปิดรายละเอียด/แก้ไข (ปุ่ม ลิงก์ และช่องกรอกในแถวยังทำงานของมันเอง) */
+  onRowClick?: (row: T) => void;
+};
 
 const alignClass = { left: 'text-left', center: 'text-center', right: 'text-right' };
 
@@ -22,7 +29,7 @@ const alignClass = { left: 'text-left', center: 'text-center', right: 'text-righ
  * จอเล็ก (มือถือ): คอลัมน์ที่ไม่สำคัญให้ซ่อนด้วย className — เช่น 'hidden md:table-cell' (ซ่อนต่ำกว่า 768px)
  * คอลัมน์ "จัดการ" (แก้/ลบ) ไม่ควรซ่อน เพื่อให้กดได้ทุกขนาดจอ
  */
-export function DataTable<T>({ columns, rows, rowKey, loading }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, loading, onRowClick }: Props<T>) {
   return (
     <div className="overflow-x-auto rounded-md border border-border">
       <table className="w-full border-collapse text-sm">
@@ -37,7 +44,22 @@ export function DataTable<T>({ columns, rows, rowKey, loading }: Props<T>) {
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={rowKey(row)} className="border-t border-border odd:bg-card even:bg-muted/40 hover:bg-primary-soft/60">
+            <tr
+              key={rowKey(row)}
+              className={cn('border-t border-border odd:bg-card even:bg-muted/40 hover:bg-primary-soft/60', onRowClick && 'cursor-pointer focus-visible:bg-primary-soft focus-visible:outline-none')}
+              {...(onRowClick
+                ? {
+                    tabIndex: 0,
+                    onClick: (e: React.MouseEvent) => {
+                      if ((e.target as HTMLElement).closest('a,button,input,select,textarea,label')) return;
+                      onRowClick(row);
+                    },
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter' && e.target === e.currentTarget) onRowClick(row);
+                    },
+                  }
+                : {})}
+            >
               {columns.map((c) => (
                 <td key={c.header} className={cn('px-3 py-2', alignClass[c.align ?? 'left'], c.className)}>
                   {c.cell(row, i)}

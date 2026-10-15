@@ -25,7 +25,7 @@ export type RequesterView = {
 };
 
 export type MyRequestView = BedRequest & {
-  /** ตำแหน่งในคิว — แสดงตามตั้งค่า queue_display (ซ่อนส่วนที่ไม่ให้ผู้ขอเห็นเป็น null) */
+  /** ตำแหน่งในคิว — แสดงทีละแบบตามตั้งค่า queue_display: all = รวมทุกสี (ค่าเริ่มต้น) · color = เฉพาะสีเดียวกัน (อีกแบบเป็น null) */
   position_all: number | null;
   position_color: number | null;
 };
@@ -74,6 +74,7 @@ export class RequesterService {
     const r = await this.repo.requesterByLine(lineUserId);
     if (!r) throw badRequest('ยังไม่ได้ลงทะเบียน กรุณากรอกข้อมูลผู้ขอก่อน');
     this.assertNotBlocked(r);
+    if (!r.pdpa_accepted_at) throw forbidden('กรุณารับทราบนโยบายข้อมูลส่วนบุคคลก่อนใช้งาน');
     return r;
   }
 
@@ -115,6 +116,7 @@ export class RequesterService {
       await this.repo.addEvent({ request_id: newId, event: 'SUBMITTED', to_status: 'WAITING', by_user_id: note.by_user_id ?? null, by_label: r.full_name, via: 'LINE', detail: note.detail ?? null }, trx);
       return newId;
     });
+    await this.requests.hooks.notify?.('SUBMITTED', id);
     return { id, request_no: `BQ${String(id).padStart(6, '0')}` };
   }
 
@@ -125,7 +127,7 @@ export class RequesterService {
     const pos = await this.requests.positionsOf(rows.filter((x) => x.status === 'WAITING').map((x) => x.id));
     return rows.map((x) => {
       const p = pos.get(x.id);
-      return { ...x, position_all: p && display !== 'color' ? p.all : null, position_color: p && display !== 'all' ? p.color : null };
+      return { ...x, position_all: p && display !== 'color' ? p.all : null, position_color: p && display === 'color' ? p.color : null };
     });
   }
 

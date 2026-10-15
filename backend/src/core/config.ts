@@ -74,6 +74,15 @@ export const config = {
   /** โฟลเดอร์ผลลัพธ์ของ frontend (npm run build) — ถ้ามี backend จะเสิร์ฟให้เอง */
   frontendDist: path.resolve(ROOT, env('FRONTEND_DIST', 'frontend/dist')),
 
+  /**
+   * role ที่ "ต้อง" ยืนยันตัวตน 2 ชั้น (แอป Authenticator) ตอนล็อกอินผ่านหน้าเว็บ — คั่นด้วยจุลภาค ปิดทั้งหมดด้วยค่าว่างเฉพาะเครื่องทดสอบ
+   * (ค่าเริ่มต้นบังคับทุก role; โหมดเทสต์ไม่บังคับ เพื่อให้ชุดทดสอบล็อกอินด้วยรหัสผ่านอย่างเดียวได้)
+   */
+  mfaRequiredRoles: env('MFA_REQUIRED_ROLES', nodeEnv === 'test' ? 'NONE' : 'STAFF,ADMIN,DEV')
+    .split(',')
+    .map((r) => r.trim().toUpperCase())
+    .filter((r) => r && r !== 'NONE') as string[],
+
   admin: {
     username: env('ADMIN_USERNAME', 'admin'),
     password: env('ADMIN_PASSWORD', 'ChangeMe!123'),

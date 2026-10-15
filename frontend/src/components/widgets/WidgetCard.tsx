@@ -2,7 +2,7 @@
  * WidgetCard — กรอบของ widget บน Dashboard: ชื่อ + เนื้อหากราฟ + (โหมดจัดวาง) ปุ่มย้าย/ขนาด/ซ่อน/แก้/ทำซ้ำ/ลบ
  * ลากวางด้วยเมาส์ (HTML5 DnD) · มือถือ/คีย์บอร์ดใช้ปุ่มเลื่อนซ้าย-ขวาแทน
  */
-import { ArrowLeft, ArrowRight, Copy, Download, Eye, EyeOff, GripVertical, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Copy, Eye, EyeOff, GripVertical, Pencil, Trash2 } from 'lucide-react';
 import type { WidgetResult, WidgetWithResult } from '../../api/dashboardApi';
 import { cn } from '../../lib/cn';
 import { WIDTH_LABEL } from '../../lib/widgetRules';
@@ -25,13 +25,12 @@ type Props = {
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  onExport: () => void;
   dnd: { draggable: boolean; onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDrop: () => void; onDragEnd: () => void };
 };
 
 const iconBtn = 'rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:pointer-events-none';
 
-export function WidgetCard({ w, result, edit, isFirst, isLast, dragging, dragOver, isAdmin, onMove, onWidth, onToggle, onEdit, onDuplicate, onDelete, onExport, dnd }: Props) {
+export function WidgetCard({ w, result, edit, isFirst, isLast, dragging, dragOver, isAdmin, onMove, onWidth, onToggle, onEdit, onDuplicate, onDelete, dnd }: Props) {
   return (
     <section
       data-widget={w.id}
@@ -51,11 +50,6 @@ export function WidgetCard({ w, result, edit, isFirst, isLast, dragging, dragOve
           <span className="truncate">{w.title}</span>
           {!w.is_active && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">ซ่อนอยู่</span>}
         </h2>
-        {!edit && (
-          <button type="button" className={iconBtn} onClick={onExport} aria-label={`ส่งออก Excel: ${w.title}`} title="ส่งออก Excel">
-            <Download className="size-4" />
-          </button>
-        )}
       </div>
 
       {result ? <WidgetView chart={w.chart} group_by={w.group_by} result={result} /> : <p className="py-6 text-center text-sm text-muted-foreground">{w.is_active ? 'ไม่สามารถแสดงกราฟนี้ได้' : 'ซ่อนอยู่ — ไม่แสดงให้ผู้อื่นเห็น'}</p>}

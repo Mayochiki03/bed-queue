@@ -15,6 +15,33 @@ export type BedRequestInsert = Omit<BedRequest, 'id' | 'request_no' | 'created_a
 /** แปลงค่า boolean ของ MariaDB (0/1) ในแถวผู้ขอ */
 const toRequester = (r: Requester & { is_blocked: number | boolean }): Requester => ({ ...r, is_blocked: !!r.is_blocked });
 
+export type RequestFilters = Pick<RequestSearchDto, 'q' | 'statuses' | 'color_code' | 'hospital_id' | 'date_from' | 'date_to'>;
+
+/**
+ * เงื่อนไขกรองคำขอ (ใช้ร่วมกันทั้งหน้าประวัติและการส่งออก Excel — ได้ผลตรงกันเสมอ)
+ * base ต้อง join hospital เป็น h และ bed_request เป็น r
+ */
+export function applyRequestFilters(base: Knex.QueryBuilder, dto: RequestFilters) {
+  if (dto.statuses.length) base.whereIn('r.status', dto.statuses);
+  if (dto.color_code) {
+    if (dto.color_code === '_NONE') base.whereNull('r.color_code');
+    else base.where('r.color_code', dto.color_code);
+  }
+  if (dto.hospital_id) base.where('r.hospital_id', dto.hospital_id);
+  // ช่วงวันที่ตามเวลาไทย (UTC+7): วันที่ D เริ่ม D-1 17:00Z ถึง D 17:00Z
+  if (dto.date_from) base.where('r.submitted_at', '>=', new Date(`${dto.date_from}T00:00:00+07:00`).toISOString());
+  if (dto.date_to) base.where('r.submitted_at', '<', new Date(new Date(`${dto.date_to}T00:00:00+07:00`).getTime() + 86_400_000).toISOString());
+  if (dto.q) {
+    base.where((w) => {
+      whereContains(w, 'r.request_no', dto.q);
+      orWhereContains(w, 'r.patient_name', dto.q);
+      orWhereContains(w, 'r.requester_name', dto.q);
+      orWhereContains(w, 'h.name', dto.q);
+    });
+  }
+  return base;
+}
+
 export class RequestRepository {
   // ---------- คำขอ ----------
   findById(id: number, x: Executor = db): Promise<BedRequest | undefined> {
@@ -77,29 +104,13 @@ export class RequestRepository {
   /** ค้นหา/ประวัติ (แบ่งหน้า) */
   search(dto: RequestSearchDto, paging: Paging): Promise<PageResult<BedRequest & { hospital_code: string; hospital_name: string }>> {
     const base = db('bed_request as r').join('hospital as h', 'h.id', 'r.hospital_id');
-    if (dto.statuses.length) base.whereIn('r.status', dto.statuses);
-    if (dto.color_code) {
-      if (dto.color_code === '_NONE') base.whereNull('r.color_code');
-      else base.where('r.color_code', dto.color_code);
-    }
-    if (dto.hospital_id) base.where('r.hospital_id', dto.hospital_id);
-    // ช่วงวันที่ตามเวลาไทย (UTC+7): วันที่ D เริ่ม D-1 17:00Z ถึง D 17:00Z
-    if (dto.date_from) base.where('r.submitted_at', '>=', new Date(`${dto.date_from}T00:00:00+07:00`).toISOString());
-    if (dto.date_to) base.where('r.submitted_at', '<', new Date(new Date(`${dto.date_to}T00:00:00+07:00`).getTime() + 86_400_000).toISOString());
-    if (dto.q) {
-      base.where((w) => {
-        whereContains(w, 'r.request_no', dto.q);
-        orWhereContains(w, 'r.patient_name', dto.q);
-        orWhereContains(w, 'r.requester_name', dto.q);
-        orWhereContains(w, 'h.name', dto.q);
-      });
-    }
+    applyRequestFilters(base, dto);
     return paginate(paging, base, (q) => q.select('r.*', 'h.code as hospital_code', 'h.name as hospital_name').orderBy('r.submitted_at', 'desc').orderBy('r.id', 'desc'));
   }
 
   // ---------- ประวัติเหตุการณ์ ----------
   addEvent(
-    e: { request_id: number; event: string; from_status?: string | null; to_status?: string | null; by_user_id?: number | null; by_label?: string | null; via?: string | null; detail?: string | null },
+    e: { request_id: number; event: string; from_status?: string | null; to_status?: string | null; by_user_id?: number | null; by_label?: string | null; via?: string | null; detail?: string | null; changes?: unknown[] | null },
     x: Executor = db,
   ) {
     return x('request_event').insert({
@@ -111,12 +122,21 @@ export class RequestRepository {
       by_label: e.by_label ?? null,
       via: e.via ?? null,
       detail: e.detail ? e.detail.slice(0, 500) : null,
+      changes: e.changes?.length ? JSON.stringify(e.changes).slice(0, 8000) : null,
       created_at: nowIso(),
     });
   }
 
   events(requestId: number): Promise<RequestEvent[]> {
     return db('request_event').where({ request_id: requestId }).orderBy('id');
+  }
+
+  /** ชื่อเจ้าหน้าที่จาก id (ไว้แสดง "ใครเรียก/ใครปิดเคส") */
+  async userNames(ids: (number | null | undefined)[]): Promise<Map<number, string>> {
+    const list = [...new Set(ids.filter((i): i is number => !!i))];
+    if (!list.length) return new Map();
+    const rows = await db('users').whereIn('id', list).select('id', 'full_name');
+    return new Map(rows.map((r: { id: number; full_name: string }) => [r.id, r.full_name]));
   }
 
   // ---------- ผู้ขอ ----------

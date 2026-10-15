@@ -44,9 +44,3 @@ export const widgetLayoutDto = z.object({
     .min(1)
     .max(200),
 });
-/** ส่งออก: ระบุ id ของ widget ที่ต้องการ (ไม่ใส่ = ทุก widget ที่แสดงอยู่) หรือส่ง config (จาก preview ที่ยังไม่บันทึก) */
-export const widgetExportDto = z.object({
-  days,
-  ids: z.array(idField).max(200).optional(),
-  config: z.object({ ...widgetConfigShape, title: z.string().trim().max(120).default('') }).optional(),
-});

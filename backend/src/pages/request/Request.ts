@@ -88,8 +88,12 @@ export type RequestEvent = {
   by_label: string | null;
   via: string | null;
   detail: string | null;
+  /** JSON ของ EventChange[] (เฉพาะเหตุการณ์ EDITED/TRANSFERRED) */
+  changes: string | null;
   created_at: string;
 };
+
+export type EventChange = { field: string; label: string; from: string | null; to: string | null };
 
 /** แถวบนบอร์ดคิว — คำขอที่ยังเปิดอยู่ พร้อมลำดับและข้อมูลโรงพยาบาล */
 export type BoardItem = BedRequest & {

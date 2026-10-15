@@ -12,6 +12,8 @@ const editable = {
   full_name: z.string().trim().min(1, 'กรุณากรอกชื่อ-สกุล').max(120, 'ชื่อยาวเกิน 120 ตัวอักษร'),
   role: roleField,
   is_active: z.enum(['Y', 'N']).default('Y'),
+  /** บังคับให้บัญชีนี้ใช้ 2FA (role ที่ถูกบังคับอยู่แล้วไม่ต้องติ๊ก) */
+  totp_required: z.enum(['Y', 'N']).default('N'),
 };
 
 export const userAddDto = z.object({
