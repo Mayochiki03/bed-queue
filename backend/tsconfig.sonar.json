@@ -1,0 +1,17 @@
+{
+  // ใช้เฉพาะตอนสแกน SonarQube (ไม่กระทบ build/รันจริง)
+  // SonarQube 9.9 มี TypeScript รุ่นเก่า ไม่รู้จัก moduleResolution "Bundler" และอ่านค่านี้จาก tsconfig.json ที่ extends มาด้วย
+  // จึงต้องเขียนค่าทั้งหมดไว้ในไฟล์นี้เองโดยไม่ใช้ extends (ถ้าแก้ tsconfig.json ให้แก้ไฟล์นี้ให้ตรงกัน)
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
+}

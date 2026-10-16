@@ -8,7 +8,7 @@ import { SessionProvider } from './lib/session';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/admin">
       <SessionProvider>
         <PopupProvider>
           <App />

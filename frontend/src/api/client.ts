@@ -27,11 +27,23 @@ export const onSessionExpired = (fn: () => void) => {
   return () => window.removeEventListener(EXPIRED_EVENT, fn);
 };
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<ApiResult<T>> {
+/**
+ * ตั้งค่าตัวเรียก API สำหรับหน้าผู้ขอใน LINE (LIFF): แนบ ID token ของ LINE และสลับ URL ของข้อมูลที่หน้าผู้ขอใช้ร่วมกับหน้าเจ้าหน้าที่
+ * (ข้อมูลหลัก/ข้อความ PDPA) ไปเป็น API สาธารณะของผู้ขอ — หน้าเจ้าหน้าที่ไม่เรียกฟังก์ชันนี้ จึงทำงานเหมือนเดิม
+ */
+type ClientHooks = { headers?: () => Promise<Record<string, string>>; rewrite?: Record<string, string> };
+let hooks: ClientHooks = {};
+export const configureClient = (h: ClientHooks) => {
+  hooks = h;
+};
+
+async function request<T>(method: string, rawUrl: string, body?: unknown): Promise<ApiResult<T>> {
+  const url = hooks.rewrite?.[rawUrl] ?? rawUrl;
   try {
+    const extra = (await hooks.headers?.()) ?? {};
     const res = await fetch(`/api${url}`, {
       method,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      headers: body === undefined ? (Object.keys(extra).length ? extra : undefined) : { 'Content-Type': 'application/json', ...extra },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
     });

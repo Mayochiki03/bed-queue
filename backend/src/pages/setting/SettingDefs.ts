@@ -49,6 +49,8 @@ export const settingDefs: SettingDef[] = [
 
   // ---------- LINE (โควต้า) ----------
   { key: 'line_monthly_quota', label: 'โควต้าข้อความ LINE ต่อเดือน', category: 'line', type: 'INT', default: 300, min: 0, max: 10000000, hint: 'แพ็กเกจฟรีของ LINE OA ในไทย = 300 (ตามที่ใช้อยู่) · 0 = ไม่จำกัด' },
+  { key: 'line_webhook_enabled', label: 'เปิดให้ตอบในแชท LINE (Webhook)', category: 'line', type: 'BOOL', default: true, hint: 'ผู้ขอพิมพ์ "สถานะ" ดูคิวได้ในแชท · ปิด = ระบบไม่ตอบอะไรในแชท (ปุ่มบนการ์ดก็ไม่ทำงาน)' },
+  { key: 'line_call_buttons', label: 'การ์ดเรียกคิวมีปุ่ม "ยืนยัน/ไม่ยืนยัน" ในแชท', category: 'line', type: 'BOOL', default: true, hint: 'ปิด = การ์ดมีแค่ปุ่มเปิดหน้าเว็บ · ต้องเปิด Webhook และตั้ง Channel Secret แล้วเท่านั้นปุ่มถึงทำงาน' },
   { key: 'line_quota_warn_pct', label: 'เตือนเมื่อใช้โควต้าไปแล้ว (%)', category: 'line', type: 'INT', default: 80, min: 1, max: 100 },
 
   // ---------- การเชื่อมต่อ LINE (เฉพาะนักพัฒนา) ----------

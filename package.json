@@ -1,6 +1,6 @@
 {
   "name": "bed-queue",
-  "version": "0.3.1",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "description": "ระบบรับคำขอเตียงผู้ป่วยจากโรงพยาบาลอื่น + จัดคิว + แจ้งเตือน LINE + สถิติ (สร้างบนตัวกลาง app-core-kit)",
@@ -10,6 +10,7 @@
     "setup": "node scripts/setup.mjs",
     "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w frontend",
+    "tunnel": "cloudflared tunnel --protocol http2 --url http://127.0.0.1:4003",
     "start": "npm run start -w backend",
     "check": "npm run check -w backend && npm run check -w frontend",
     "test": "npm test -w backend",

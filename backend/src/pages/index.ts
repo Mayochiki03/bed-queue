@@ -9,10 +9,12 @@ import { dashboardPage } from './dashboard';
 import { devPage } from './dev';
 import { exportPage } from './export';
 import { hospitalPage } from './hospital';
+import { linePage } from './line';
 import { logPage } from './log';
 import { notificationPage } from './notification';
 import { lookupPage } from './lookup';
 import { requestPage } from './request';
+import { requesterPage } from './requester';
 import { settingPage } from './setting';
 import { userPage } from './user';
 
@@ -24,6 +26,8 @@ export const pages: PageDef[] = [
   dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
   exportPage, // ส่งออก Excel (รายงาน+กราฟ+ข้อมูลละเอียด)
   notificationPage, // ข้อความแจ้งเตือน LINE (เลือกเปิด/ปิด + ประวัติการส่ง)
+  requesterPage, // API ฝั่งผู้ขอผ่าน LINE (LIFF) — public ตรวจ ID token ของ LINE เอง
+  linePage, // LINE webhook (ตอบ "สถานะ" + ปุ่มยืนยันในแชท) — public ตรวจลายเซ็นเอง
   userPage, // ผู้ใช้งาน
   devPage, // เมนูนักพัฒนา (ผู้ขอจำลอง) — DEV เท่านั้น
   logPage, // ดู audit log

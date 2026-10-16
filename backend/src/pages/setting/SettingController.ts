@@ -2,7 +2,7 @@
  * SettingController.ts — API ตั้งค่าของระบบ
  *   POST /api/setting/list   { categories?: string[] }     รายการค่า (ADMIN ขึ้นไป — เห็นเฉพาะค่าที่ role ตัวเองแก้ได้)
  *   POST /api/setting/save   { values: { key: value } }    บันทึกหลายค่าพร้อมกัน
- *   POST /api/setting/test   { kind, line_user_id? }        ปุ่มทดสอบ: database | encryption | time | public_url | line_token | line_quota | line_push (4 ข้อหลังเฉพาะนักพัฒนา)
+ *   POST /api/setting/test   { kind, line_user_id? }        ปุ่มทดสอบ: database | encryption | time | public_url | line_token | line_quota | line_push | line_webhook (5 ข้อหลังเฉพาะนักพัฒนา)
  *   POST /api/setting/ui     {}                             ค่าที่หน้าจอทุกคนต้องใช้ (ไม่มีค่าลับ)
  */
 import { Router } from 'express';
@@ -47,7 +47,7 @@ settingRouter.post('/ui', async (_req, res) => {
 
 type TestResult = { ok: boolean; title: string; detail: string };
 const testDto = z.object({
-  kind: z.enum(['database', 'encryption', 'time', 'public_url', 'line_token', 'line_quota', 'line_push']),
+  kind: z.enum(['database', 'encryption', 'time', 'public_url', 'line_token', 'line_quota', 'line_push', 'line_webhook']),
   /** line_push: LINE user ID ที่จะส่งข้อความทดสอบไปหา (ส่งจริง 1 ข้อความ นับโควต้า) */
   line_user_id: z.string().trim().max(60).optional(),
 });
@@ -65,7 +65,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 8000) {
 
 settingRouter.post('/test', requireRole('ADMIN'), async (req, res) => {
   const { kind, line_user_id } = parse(testDto, req.body);
-  if (['public_url', 'line_token', 'line_quota', 'line_push'].includes(kind) && !hasRole(req.user!.role, 'DEV')) throw forbidden('ทดสอบข้อนี้ได้เฉพาะนักพัฒนา');
+  if (['public_url', 'line_token', 'line_quota', 'line_push', 'line_webhook'].includes(kind) && !hasRole(req.user!.role, 'DEV')) throw forbidden('ทดสอบข้อนี้ได้เฉพาะนักพัฒนา');
   let r: TestResult;
   switch (kind) {
     case 'database': {
@@ -126,6 +126,31 @@ settingRouter.post('/test', requireRole('ADMIN'), async (req, res) => {
         const mine = (await db('notification_log').where('created_at', '>=', monthStartBangkok()).where({ status: 'SENT' }).count({ n: '*' }).first()) as { n: number | string };
         r = { ok: true, title: 'โควต้าข้อความเดือนนี้', detail: `LINE นับใช้ไป ${used.data?.totalUsage ?? 0} จาก ${limit ?? 'ไม่จำกัด'} ข้อความ (ระบบนี้ส่งเอง ${Number(mine.n)} ข้อความ — ข้อความจากช่องทางอื่นของ OA เช่น แชทตอบเองก็นับรวม)` };
       }
+      break;
+    }
+    case 'line_webhook': {
+      if (!(await getSetting<string>('line_channel_token'))) throw badRequest('ยังไม่ได้ตั้ง Channel Access Token');
+      if (!(await getSetting<string>('line_channel_secret'))) throw badRequest('ยังไม่ได้ตั้ง Channel Secret (ใช้ตรวจลายเซ็นของ LINE)');
+      const base = (await getSetting<string>('public_base_url')).replace(/\/+$/, '');
+      const expect = base ? `${base}/api/line/webhook` : '';
+      const info = await lineClient.webhookInfo();
+      if (!info.ok) {
+        r = { ok: false, title: 'อ่าน Webhook URL จาก LINE ไม่ได้', detail: `LINE ตอบ ${info.status || 'ไม่ตอบ'} — ตรวจ Channel Access Token` };
+        break;
+      }
+      const set = info.data?.endpoint ?? '';
+      if (!set) {
+        r = { ok: false, title: 'ยังไม่ได้ตั้ง Webhook URL ใน LINE Developers', detail: `วางที่ Messaging API → Webhook URL: ${expect || '(ตั้ง Public URL ก่อน)'}` };
+        break;
+      }
+      if (expect && set !== expect) {
+        r = { ok: false, title: 'Webhook URL ใน LINE ไม่ตรงกับของระบบ', detail: `LINE ใช้ ${set} แต่ระบบนี้ควรเป็น ${expect} — Cloudflare Quick Tunnel เปลี่ยน URL ทุกครั้งที่เปิดใหม่ ต้องแก้ทั้งสองฝั่งให้ตรงกัน` };
+        break;
+      }
+      const t = await lineClient.webhookTest();
+      if (!t.ok) r = { ok: false, title: 'ให้ LINE ทดสอบไม่สำเร็จ', detail: `LINE ตอบ ${t.status || 'ไม่ตอบ'}` };
+      else if (t.data?.success) r = { ok: true, title: 'Webhook ใช้งานได้', detail: `LINE ยิงทดสอบมาที่ ${set} แล้วระบบตอบ ${t.data.statusCode ?? 200} · ลายเซ็นถูกต้อง · ถ้า Use webhook ใน LINE ยังปิดอยู่ให้เปิดด้วย` };
+      else r = { ok: false, title: 'LINE ยิงทดสอบแล้วระบบตอบผิดปกติ', detail: `${t.data?.reason ?? 'ไม่ทราบสาเหตุ'}${t.data?.statusCode ? ` (รหัส ${t.data.statusCode})` : ''}${t.data?.detail ? ` — ${t.data.detail}` : ''} · ตรวจ Channel Secret ว่าตรงกับ OA นี้ และ Tunnel ยังทำงานอยู่` };
       break;
     }
     case 'line_push': {

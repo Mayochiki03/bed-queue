@@ -10,6 +10,7 @@ process.env.NODE_ENV = 'test';
 process.env.DB_NAME = process.env.TEST_DB_NAME ?? 'bed_queue_test'; // ต้องตั้งก่อน import config (ค่านี้ชนะ .env)
 
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 
@@ -1085,6 +1086,293 @@ describe('ยืนยันตัวตน 2 ชั้น (2FA)', () => {
     assert.equal(r.http, 200);
     assert.equal(r.data.mfa, null);
     assert.ok((r.headers.get('set-cookie') ?? '').startsWith('app_session='));
+  });
+});
+
+describe('LINE webhook', () => {
+  const SECRET = 'sec-XYZ';
+  const sign = (raw: string, secret = SECRET) => createHmac('sha256', secret).update(raw).digest('base64');
+  const post = (body: unknown, signature?: string) => {
+    const raw = JSON.stringify(body);
+    return fetch(`${base}/line/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', ...(signature === undefined ? { 'x-line-signature': sign(raw) } : signature ? { 'x-line-signature': signature } : {}) }, body: raw });
+  };
+  const save = (values: Record<string, unknown>) => call('POST', '/setting/save', { values });
+  const realFetch = globalThis.fetch;
+  let sent: { url: string; body: any }[] = [];
+  let lineWebhook: { endpoint: string; test: any } = { endpoint: '', test: { success: true, statusCode: 200 } };
+  const fake = (async (url: any, init: any) => {
+    const u = String(url);
+    if (!u.startsWith('https://api.line.me')) return realFetch(url, init);
+    if (u.endsWith('/channel/webhook/endpoint')) return { ok: true, status: 200, json: async () => ({ endpoint: lineWebhook.endpoint, active: true }) } as Response;
+    if (u.endsWith('/channel/webhook/test')) return { ok: true, status: 200, json: async () => lineWebhook.test } as Response;
+    sent.push({ url: u, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({}) } as Response;
+  }) as typeof fetch;
+  /** webhook ตอบ 200 ก่อนแล้วประมวลผลต่อ — รอจนมี reply ครบ */
+  const waitSent = async (n: number) => {
+    for (let i = 0; i < 100 && sent.length < n; i++) await new Promise((r) => setTimeout(r, 20));
+    return sent;
+  };
+  const textOf = (i: number) => JSON.stringify(sent[i]!.body.messages);
+  let staffC = '';
+  let uid = 'U-hook-1';
+  let calledId = 0;
+  let waitingId = 0;
+
+  before(async () => {
+    staffC = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    await save({ connection_mode: 'DEV_TUNNEL', line_channel_token: 'tok-W', line_channel_secret: SECRET, public_base_url: 'https://bed.example.com', liff_id: '99-abc' });
+    await call('POST', '/dev/mock/create', { full_name: 'ตัวสร้าง รพ.', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0800000000' }); // ให้มี รพ. 11206 แน่นอน
+    const hosp = (await db('hospital').where({ code: '11206' }).first()).id;
+    const now = new Date().toISOString();
+    await db('requester').insert({ line_user_id: uid, full_name: 'ผู้ขอ เว็บฮุก', phone: '0800000001', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
+    await db('requester').insert({ line_user_id: 'U-hook-2', full_name: 'คนอื่น', phone: '0800000002', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
+    const rid = (await db('requester').where({ line_user_id: uid }).first()).id;
+    const mk = async (name: string) => (await call('POST', '/request/add', { hospital_id: hosp, requester_id: rid, requester_name: 'x', patient_name: name, color_code: 'RED' }, staffC)).data.id as number;
+    waitingId = await mk('ผู้ป่วย รอคิวลับ');
+    calledId = await mk('ผู้ป่วย ถูกเรียกลับ');
+    globalThis.fetch = fake;
+  });
+  after(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('ไม่มีลายเซ็น/ลายเซ็นผิด → 401 · ลายเซ็นถูก + events ว่าง (ปุ่ม Verify) → 200', async () => {
+    assert.equal((await post({ events: [] }, '')).status, 401);
+    assert.equal((await post({ events: [] }, 'bm90LXZhbGlk')).status, 401);
+    assert.equal((await post({ events: [] }, sign('{"events":[]}', 'secret-อื่น'))).status, 401);
+    assert.equal((await post({ events: [] })).status, 200);
+    assert.equal(sent.length, 0);
+  });
+
+  it('ยังไม่ตั้ง Channel Secret → 503', async () => {
+    // เว้นว่าง = ใช้ค่าเดิม จึงต้องลบตรง ๆ ใน DB
+    await db('app_setting').where({ key: 'line_channel_secret' }).delete();
+    (await import('../src/core/settings')).invalidateSettings();
+    assert.equal((await post({ events: [] })).status, 503);
+    await save({ line_channel_secret: SECRET });
+  });
+
+  it('พิมพ์ "สถานะ" → ตอบด้วย reply (ไม่กินโควต้า) สรุปเลขคำขอ + ลำดับ ไม่มีชื่อผู้ป่วย', async () => {
+    sent = [];
+    await post({ events: [{ type: 'message', replyToken: 'rt-1', source: { userId: uid }, message: { type: 'text', text: 'สถานะ' } }] });
+    await waitSent(1);
+    assert.equal(sent[0]!.url, 'https://api.line.me/v2/bot/message/reply');
+    assert.equal(sent[0]!.body.replyToken, 'rt-1');
+    const t = textOf(0);
+    assert.ok(t.includes(`BQ${String(waitingId).padStart(6, '0')}`) && t.includes('รอคิว'));
+    assert.ok(!t.includes('ผู้ป่วย รอคิวลับ'), 'ห้ามมีชื่อผู้ป่วยในแชท');
+  });
+
+  it('ข้อความอื่น → บอกวิธีใช้ · ผู้ที่ยังไม่ลงทะเบียนพิมพ์ "สถานะ" → ชวนลงทะเบียน', async () => {
+    sent = [];
+    await post({ events: [{ type: 'message', replyToken: 'rt-2', source: { userId: uid }, message: { type: 'text', text: 'สวัสดี' } }] });
+    await post({ events: [{ type: 'message', replyToken: 'rt-3', source: { userId: 'U-nobody' }, message: { type: 'text', text: 'สถานะ' } }] });
+    await waitSent(2);
+    assert.ok(textOf(0).includes('สถานะ') || textOf(1).includes('สถานะ'));
+    assert.ok(sent.some((s) => JSON.stringify(s.body.messages).includes('ยังไม่ได้ลงทะเบียน')));
+  });
+
+  it('การ์ดเรียกคิวมีปุ่มยืนยัน/ไม่ยืนยันเมื่อเปิด webhook · ปิดตัวเลือก line_call_buttons → เหลือแค่ปุ่มเปิดเว็บ', async () => {
+    sent = [];
+    await call('POST', '/request/transition', { id: calledId, action: 'CALL' }, staffC);
+    assert.equal(sent[0]!.url, 'https://api.line.me/v2/bot/message/push');
+    let t = textOf(0);
+    assert.ok(t.includes(`a=confirm&r=${calledId}`) && t.includes(`a=decline&r=${calledId}`));
+    await save({ line_call_buttons: false });
+    sent = [];
+    await call('POST', '/request/transition', { id: calledId, action: 'REQUEUE' }, staffC);
+    await call('POST', '/request/transition', { id: calledId, action: 'CALL' }, staffC);
+    const push = sent.find((s) => s.body.messages?.[0]?.altText && JSON.stringify(s.body).includes('ถึงคิว'));
+    assert.ok(push && !JSON.stringify(push.body).includes('a=confirm'));
+    await save({ line_call_buttons: true });
+  });
+
+  it('กด "ไม่ยืนยัน" → ถามซ้ำก่อน (ยังไม่เปลี่ยนสถานะ) · คนอื่นกดคำขอของเราไม่ได้', async () => {
+    sent = [];
+    await post({ events: [{ type: 'postback', replyToken: 'rt-4', source: { userId: uid }, postback: { data: `a=decline&r=${calledId}` } }] });
+    await waitSent(1);
+    assert.ok(textOf(0).includes(`a=decline_yes&r=${calledId}`));
+    assert.equal((await db('bed_request').where({ id: calledId }).first()).status, 'CALLED');
+
+    sent = [];
+    await post({ events: [{ type: 'postback', replyToken: 'rt-5', source: { userId: 'U-hook-2' }, postback: { data: `a=confirm&r=${calledId}` } }] });
+    await waitSent(1);
+    assert.ok(textOf(0).includes('ทำรายการไม่ได้'));
+    assert.equal((await db('bed_request').where({ id: calledId }).first()).status, 'CALLED', 'คนอื่นต้องเปลี่ยนสถานะไม่ได้');
+  });
+
+  it('กด "ยืนยันส่งตัว" → CONFIRMED ผ่าน LINE · กดซ้ำ → บอกว่าทำไม่ได้ ไม่พัง · ปิด webhook → เงียบ', async () => {
+    sent = [];
+    await post({ events: [{ type: 'postback', replyToken: 'rt-6', source: { userId: uid }, postback: { data: `a=confirm&r=${calledId}` } }] });
+    await waitSent(1);
+    const row = await db('bed_request').where({ id: calledId }).first();
+    assert.equal(row.status, 'CONFIRMED');
+    assert.equal(row.resolved_via, 'LINE');
+    assert.ok(textOf(0).includes('ยืนยันส่งตัว'));
+
+    sent = [];
+    await post({ events: [{ type: 'postback', replyToken: 'rt-7', source: { userId: uid }, postback: { data: `a=confirm&r=${calledId}` } }] });
+    await waitSent(1);
+    assert.ok(textOf(0).includes('ทำรายการไม่ได้'));
+
+    await save({ line_webhook_enabled: false });
+    sent = [];
+    await post({ events: [{ type: 'message', replyToken: 'rt-8', source: { userId: uid }, message: { type: 'text', text: 'สถานะ' } }] });
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(sent.length, 0);
+    await save({ line_webhook_enabled: true });
+  });
+
+  it('postback ที่รูปแบบผิด/id ไม่ใช่ตัวเลข → เงียบ ไม่พัง', async () => {
+    sent = [];
+    const r = await post({ events: [{ type: 'postback', replyToken: 'rt-9', source: { userId: uid }, postback: { data: 'a=confirm&r=abc' } }, { type: 'unfollow', source: { userId: uid } }] });
+    assert.equal(r.status, 200);
+    await new Promise((r2) => setTimeout(r2, 150));
+    assert.equal(sent.length, 0);
+  });
+
+  it('ปุ่มทดสอบ webhook: URL ไม่ตรง → ไม่ผ่าน · ตรง + LINE ยิงสำเร็จ → ผ่าน · LINE ยิงแล้วระบบตอบผิด → ไม่ผ่าน (พร้อมเหตุผล)', async () => {
+    const test = () => call('POST', '/setting/test', { kind: 'line_webhook' });
+    lineWebhook = { endpoint: '', test: { success: true } };
+    assert.equal((await test()).data.ok, false);
+    lineWebhook = { endpoint: 'https://old.trycloudflare.com/api/line/webhook', test: { success: true } };
+    const mismatch = (await test()).data;
+    assert.equal(mismatch.ok, false);
+    assert.match(mismatch.detail, /old\.trycloudflare/);
+    lineWebhook = { endpoint: 'https://bed.example.com/api/line/webhook', test: { success: true, statusCode: 200 } };
+    assert.equal((await test()).data.ok, true);
+    lineWebhook = { endpoint: 'https://bed.example.com/api/line/webhook', test: { success: false, statusCode: 401, reason: 'COULD_NOT_CONNECT' } };
+    const bad = (await test()).data;
+    assert.equal(bad.ok, false);
+    assert.match(bad.detail, /COULD_NOT_CONNECT/);
+    assert.equal((await call('POST', '/setting/test', { kind: 'line_webhook' }, staffC)).http, 403, 'เฉพาะนักพัฒนา');
+  });
+
+  it('คืนค่าเริ่มต้น', async () => {
+    globalThis.fetch = realFetch;
+    await save({ connection_mode: 'LOCAL', line_channel_token: '', public_base_url: '', liff_id: '' });
+    await db('app_setting').where({ key: 'line_channel_secret' }).delete();
+    (await import('../src/core/settings')).invalidateSettings();
+  });
+});
+
+describe('พอร์ต public (ต่อ tunnel)', () => {
+  let pub = '';
+  let srv: ReturnType<ReturnType<typeof createApp>['listen']>;
+  before(async () => {
+    const { createPublicApp } = await import('../src/publicApp');
+    srv = createPublicApp().listen(0);
+    pub = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+  });
+  after(() => {
+    srv.close();
+  });
+
+  it('เปิดเฉพาะ health / webhook / หน้าชั่วคราว', async () => {
+    assert.equal((await fetch(`${pub}/api/health`)).status, 200);
+    const home = await fetch(`${pub}/`);
+    assert.equal(home.status, 200);
+    assert.match(home.headers.get('content-type') ?? '', /html/);
+    assert.match(home.headers.get('content-security-policy') ?? '', /script-src 'self' https:\/\/static\.line-scdn\.net/, 'LIFF SDK ต้องโหลด client features จาก LINE ได้');
+    assert.ok(!(await home.text()).includes('/admin'), 'หน้าผู้ขอต้องไม่อ้างถึงหน้าเจ้าหน้าที่');
+    // webhook ถึงตัวตรวจลายเซ็นจริง: ไม่มีลายเซ็น = 401 (หรือ 503 ถ้ายังไม่ตั้ง secret) ไม่ใช่ 404
+    const wh = await fetch(`${pub}/api/line/webhook`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"events":[]}' });
+    assert.ok([401, 503].includes(wh.status), `webhook ตอบ ${wh.status}`);
+  });
+
+  it('API/หน้าของเจ้าหน้าที่เข้าไม่ได้ทางพอร์ตนี้ (404) แม้รู้ URL', async () => {
+    for (const [method, path] of [['POST', '/api/auth/login'], ['POST', '/api/user/search'], ['POST', '/api/request/search'], ['POST', '/api/setting/list'], ['GET', '/admin'], ['GET', '/admin/connection'], ['GET', '/assets/x.js']] as const) {
+      const r = await fetch(pub + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+      assert.equal(r.status, 404, `${method} ${path}`);
+    }
+  });
+});
+
+describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => {
+  let pub = '';
+  let srv: ReturnType<ReturnType<typeof createApp>['listen']>;
+  const realFetch = globalThis.fetch;
+  let verifyCalls = 0;
+  const fake = (async (url: any, init: any) => {
+    if (String(url) !== 'https://api.line.me/oauth2/v2.1/verify') return realFetch(url, init);
+    verifyCalls++;
+    const p = new URLSearchParams(String(init.body));
+    const tok = p.get('id_token') ?? '';
+    const exp = Math.floor(Date.now() / 1000) + 3600;
+    if (p.get('client_id') !== '2011916507') return { ok: false, status: 400, json: async () => ({ error: 'invalid_request' }) } as Response;
+    if (tok === 'tok-A') return { ok: true, status: 200, json: async () => ({ sub: 'U-liff-A', name: 'สมชาย', exp }) } as Response;
+    if (tok === 'tok-B') return { ok: true, status: 200, json: async () => ({ sub: 'U-liff-B', name: 'สมหญิง', exp }) } as Response;
+    return { ok: false, status: 400, json: async () => ({ error: 'invalid_request', error_description: 'IdToken expired.' }) } as Response;
+  }) as typeof fetch;
+  const post = async (path: string, body: unknown = {}, token?: string) => {
+    const r = await realFetch(`${pub}/api/requester${path}`, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body) });
+    return { http: r.status, ...((await r.json()) as { status: string; message?: string; data?: any; fields?: any }) };
+  };
+  const save = (values: Record<string, unknown>) => call('POST', '/setting/save', { values });
+  const profile = { full_name: 'สมชาย ใจดี', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0811112222' };
+  const patient = { patient_name: 'ผู้ป่วย ลับมาก', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER' };
+
+  before(async () => {
+    const { createPublicApp } = await import('../src/publicApp');
+    srv = createPublicApp().listen(0);
+    pub = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    globalThis.fetch = fake;
+    await save({ connection_mode: 'DEV_TUNNEL', line_login_channel_id: '2011916507', liff_id: '2011916507-abcd' });
+    (await import('../src/pages/requester/LineAuth')).clearIdTokenCache();
+  });
+  after(async () => {
+    globalThis.fetch = realFetch;
+    srv.close();
+    await save({ connection_mode: 'LOCAL', line_login_channel_id: '', liff_id: '' });
+  });
+
+  it('boot/ui/lookups เปิดให้ทุกคน (ไม่มีค่าลับ) · คำสั่งอื่นต้องมี token ที่ LINE รับรอง', async () => {
+    const boot = await post('/boot');
+    assert.equal(boot.data.liff_id, '2011916507-abcd');
+    assert.ok(!JSON.stringify(boot).includes('secret'));
+    assert.ok((await post('/ui')).data.pdpa_notice.length > 10);
+    assert.ok((await post('/lookups')).data.COLOR.length > 0);
+    assert.equal((await post('/profile')).http, 401, 'ไม่มี token');
+    assert.equal((await post('/profile', {}, 'tok-expired')).http, 401, 'LINE ไม่รับรอง token');
+  });
+
+  it('โหมด LOCAL → ปฏิเสธ (403) แม้ token ถูก', async () => {
+    await save({ connection_mode: 'LOCAL' });
+    (await import('../src/pages/requester/LineAuth')).clearIdTokenCache();
+    assert.equal((await post('/profile', {}, 'tok-A')).http, 403);
+    await save({ connection_mode: 'DEV_TUNNEL' });
+  });
+
+  it('ลงทะเบียน (ต้องรับทราบ PDPA) → ส่งคำขอ → เห็นเฉพาะของตัวเอง · ตัวตนมาจาก LINE ไม่ใช่จาก body', async () => {
+    assert.equal((await post('/profile', {}, 'tok-A')).data, null);
+    const noPdpa = await post('/save-profile', { profile }, 'tok-A');
+    assert.equal(noPdpa.http, 400);
+    const saved = await post('/save-profile', { profile: { ...profile, accept_pdpa: true } }, 'tok-A');
+    assert.equal(saved.http, 200);
+    assert.equal((await db('requester').where({ line_user_id: 'U-liff-A' }).first()).display_name, 'สมชาย');
+
+    const sub = await post('/submit', { request: patient }, 'tok-A');
+    assert.equal(sub.http, 201);
+    const mineA = (await post('/mine', {}, 'tok-A')).data;
+    assert.equal(mineA.length, 1);
+    assert.equal(mineA[0].status, 'WAITING');
+
+    // ผู้ใช้อีกคน: ต้องลงทะเบียนก่อน และมองไม่เห็น/ยกเลิกคำขอของคนแรกไม่ได้ ต่อให้ส่ง requester_id/line_user_id ปลอมมาใน body
+    assert.equal((await post('/mine', { line_user_id: 'U-liff-A', requester_id: saved.data.id }, 'tok-B')).http, 400, 'ยังไม่ลงทะเบียน');
+    await post('/save-profile', { profile: { ...profile, full_name: 'สมหญิง', accept_pdpa: true } }, 'tok-B');
+    assert.equal((await post('/mine', { line_user_id: 'U-liff-A' }, 'tok-B')).data.length, 0);
+    assert.equal((await post('/cancel', { id: sub.data.id }, 'tok-B')).http, 404);
+    assert.equal((await post('/respond', { id: sub.data.id, accept: true }, 'tok-B')).http, 404);
+    assert.equal((await post('/cancel', { id: sub.data.id }, 'tok-A')).http, 200);
+  });
+
+  it('จำผลตรวจ token ไว้ ไม่เรียก LINE ซ้ำทุกคำสั่ง', async () => {
+    verifyCalls = 0;
+    await post('/profile', {}, 'tok-A');
+    await post('/mine', {}, 'tok-A');
+    await post('/mine', {}, 'tok-A');
+    assert.equal(verifyCalls, 0, 'tok-A ถูกจำไว้แล้วจากเทสต์ก่อนหน้า');
   });
 });
 

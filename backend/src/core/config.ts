@@ -50,8 +50,15 @@ export const config = {
   appName: env('APP_NAME', 'ระบบคิวขอเตียง'),
   /** ธีมสี: care | herb | ocean | rose | slate | indigo | amber | graphite (ดู frontend/src/theme.css) */
   theme: env('APP_THEME', 'care'),
+  /**
+   * 2 พอร์ต (เหมือนระบบนวด แต่เลขไม่ซ้ำกัน เพราะลงเครื่อง server เดียวกัน — ระบบนวดใช้ 4000/4001, งานอื่นใช้ 3001/5000)
+   *   INTERNAL 4002  ทุกหน้า: http://<IP เครื่อง>:4002/admin  (LAN เท่านั้น)
+   *   PUBLIC   4003  ต่อ Cloudflare Tunnel: cloudflared tunnel --url http://127.0.0.1:4003  (เปิดแค่ webhook + หน้าผู้ขอ)
+   */
   host: env('HOST', '0.0.0.0'),
-  port: Number(env('PORT', '4000')),
+  internalPort: Number(env('INTERNAL_PORT', '4002')),
+  publicHost: env('PUBLIC_HOST', '0.0.0.0'),
+  publicPort: Number(env('PUBLIC_PORT', '4003')),
 
   db: {
     client: dbClient,
@@ -73,6 +80,8 @@ export const config = {
   autoMigrate: env('AUTO_MIGRATE', nodeEnv === 'production' ? 'false' : 'true') === 'true',
   /** โฟลเดอร์ผลลัพธ์ของ frontend (npm run build) — ถ้ามี backend จะเสิร์ฟให้เอง */
   frontendDist: path.resolve(ROOT, env('FRONTEND_DIST', 'frontend/dist')),
+  /** หน้าผู้ขอใน LINE (build แยก — npm run build) ที่พอร์ต public ส่งให้ */
+  liffDist: path.resolve(ROOT, env('LIFF_DIST', 'frontend/dist-liff')),
 
   /**
    * role ที่ "ต้อง" ยืนยันตัวตน 2 ชั้น (แอป Authenticator) ตอนล็อกอินผ่านหน้าเว็บ — คั่นด้วยจุลภาค ปิดทั้งหมดด้วยค่าว่างเฉพาะเครื่องทดสอบ

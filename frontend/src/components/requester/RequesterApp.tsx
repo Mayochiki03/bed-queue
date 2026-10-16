@@ -38,7 +38,7 @@ const GENDERS = [
   { value: 'O', label: 'อื่น ๆ' },
 ];
 
-type Tab = 'mine' | 'submit' | 'profile';
+export type Tab = 'mine' | 'submit' | 'profile';
 
 /** ผู้ขอที่ยังไม่เคยลงทะเบียน: ยินยอม → กรอกข้อมูล แล้วเรียก onRegister(ข้อมูล) */
 export function RegisterFlow({ onRegister }: { onRegister: (p: ProfileInput) => Promise<ApiResult<unknown>> }) {
@@ -97,8 +97,8 @@ function ProfileFields() {
 }
 
 /** แอปของผู้ขอที่ลงทะเบียนแล้ว */
-export function RequesterApp({ api, onProfileChanged }: { api: RequesterApi; onProfileChanged?: () => void | Promise<void> }) {
-  const [tab, setTab] = useState<Tab>('mine');
+export function RequesterApp({ api, onProfileChanged, initialTab = 'mine' }: { api: RequesterApi; onProfileChanged?: () => void | Promise<void>; initialTab?: Tab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [profile, setProfile] = useState<MockProfile | null>(null);
   const [mine, setMine] = useState<MockRequest[] | null>(null);
   const popup = usePopup();

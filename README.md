@@ -21,7 +21,9 @@
 | 3a | ส่งออก Excel (สรุป+กราฟ/ละเอียด/ประวัติ/ผู้ขอ/log) | เสร็จ (v0.2.1) |
 | 3b | 2FA, หน้าแจ้งเตือน (เลือกเรื่องที่แจ้ง + ประวัติ + โควต้า), หน้าการเชื่อมต่อ LINE ใหม่, หน้าระบบและเครื่องมือ, หน้าผู้ขอใหม่ + PDPA | เสร็จ (v0.3.0) |
 | 3c | นำเข้า Excel | ยังไม่ทำ |
-| 4 | หน้าผู้ขอจริงบน LINE (LIFF), webhook, ทดสอบ LINE push กับ LINE จริง, โหมด DEV_TUNNEL/PRODUCTION | ยังไม่ทำ |
+| 3.5 | LINE webhook: พิมพ์ "สถานะ" + ปุ่มยืนยัน/ไม่ยืนยันในแชท (v0.4.0, ทดสอบด้วยของจำลอง) | ทำแล้ว |
+| 4a | หน้าผู้ขอบน LINE (LIFF) + API ผู้ขอ (หน่วยงาน) · บุคคลทั่วไป = "กำลังพัฒนา" | ทำแล้ว (v0.5.0) ยังไม่ทดสอบกับ LINE จริง |
+| 4b | ทดสอบ LINE จริงครบวงจร, ผู้ขอบุคคลทั่วไป, โหมด PRODUCTION | ยังไม่ทำ |
 
 รายละเอียดแต่ละเวอร์ชัน (รวมสิ่งที่ยังไม่ทำ) ดู [CHANGELOG.md](CHANGELOG.md)
 
@@ -38,7 +40,7 @@ npm run setup     # สร้าง .env พร้อมสุ่ม JWT_SECRET 
 npm run dev
 ```
 
-เปิด http://localhost:5173 — เข้าสู่ระบบด้วย `admin` / `ChangeMe!123` (เป็นสิทธิ์นักพัฒนา ควรเปลี่ยนรหัสทันที) — เข้าครั้งแรกจะให้สแกน QR ผูกแอป Authenticator ก่อน (ถ้าไม่อยากใช้ตอนพัฒนา ตั้ง `MFA_REQUIRED_ROLES=NONE` ใน .env)
+เปิด http://localhost:5173/admin — เข้าสู่ระบบด้วย `admin` / `ChangeMe!123` (เป็นสิทธิ์นักพัฒนา ควรเปลี่ยนรหัสทันที) — เข้าครั้งแรกจะให้สแกน QR ผูกแอป Authenticator ก่อน (ถ้าไม่อยากใช้ตอนพัฒนา ตั้ง `MFA_REQUIRED_ROLES=NONE` ใน .env)
 
 > `APP_SECRET_KEY` ห้ามทำหายหรือเปลี่ยน ไม่เช่นนั้นค่าลับที่เข้ารหัสไว้ในฐานข้อมูลต้องกรอกใหม่ · ขึ้นใช้งานจริงต้องตั้งค่านี้เองและเปิด HTTPS (`COOKIE_SECURE=true`)
 
@@ -75,6 +77,16 @@ frontend/src/
 | `npm run build` / `npm start` | build หน้าเว็บ / รันแบบ production |
 | `npm run migrate` / `migrate:status` | สร้าง/ดูสถานะตาราง |
 | `npm run db:reset -- --yes` | ลบข้อมูลทั้งหมดแล้วสร้างตารางใหม่ (ต้องใส่ `--yes` เอง) |
+
+## พอร์ตและ Cloudflare Tunnel (แบบเดียวกับระบบนวด)
+| พอร์ต | ใช้ทำอะไร | เปิดให้ใคร |
+|---|---|---|
+| **4002** INTERNAL | ทุกหน้า: `http://<IP เครื่อง>:4002/admin` (+ API ทั้งหมด) | LAN เท่านั้น — ห้ามต่อ tunnel |
+| **4003** PUBLIC | LINE webhook + หน้าผู้ขอ (LIFF, build แยก `frontend/dist-liff`) + `/api/requester` — ไม่มี `/admin` และไม่มี API เจ้าหน้าที่ | ต่อ Cloudflare Tunnel |
+| 5173 | Vite ตอนพัฒนา: `http://localhost:5173/admin` | เครื่อง dev |
+
+เลี่ยงพอร์ตที่ระบบนวด (4000/4001) และงานอื่น (3001/5000) ใช้อยู่บนเครื่อง server เดียวกัน · เปลี่ยนได้ด้วย `INTERNAL_PORT` / `PUBLIC_PORT` ใน `.env`
+เปิด tunnel: `npm run tunnel` (= `cloudflared tunnel --protocol http2 --url http://127.0.0.1:4003`) → ได้ลิงก์ `https://….trycloudflare.com` → ใส่ที่ `/admin › เชื่อมต่อ LINE › Public URL` แล้วนำ LIFF Endpoint URL / Webhook URL ไปวางใน LINE Developers ใหม่ (Quick Tunnel เปลี่ยนลิงก์ทุกครั้งที่เปิดใหม่)
 
 ## เอกสาร
 

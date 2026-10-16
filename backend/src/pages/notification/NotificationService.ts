@@ -8,6 +8,7 @@
 import { notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
 import { lineClient } from './LineClient';
+import { card, type Btn } from './LineFlex';
 import { TEMPLATE_DEFS, TEMPLATE_VARS, type NotifyType } from './Notification';
 import type { NotificationRepository } from './NotificationRepository';
 
@@ -97,7 +98,7 @@ export class NotificationService {
       };
       const title = tpl?.title ?? def.title;
       const text = fill(tpl?.body ?? def.body, vars);
-      const r = await lineClient.push(target.line_user_id, [await this.flex(title, text, def.button)]);
+      const r = await lineClient.push(target.line_user_id, [await this.flex(title, text, def.button, type, requestId)]);
       if (r.ok) await log('SENT', null);
       else await log('FAILED', (r.data?.message ?? (r.status === -1 ? 'ติดต่อ LINE ไม่ได้ (หมดเวลา)' : `LINE ตอบ ${r.status}`)).slice(0, 500));
     } catch (err) {
@@ -110,19 +111,15 @@ export class NotificationService {
     }
   }
 
-  /** ข้อความแบบ Flex (หัวสีเขียว + เนื้อหา + ปุ่มเปิดหน้าผู้ขอ) */
-  private async flex(title: string, text: string, button?: string) {
-    const [liff, base] = await Promise.all([getSetting<string>('liff_id'), getSetting<string>('public_base_url')]);
+  /** การ์ดแจ้งเตือน: ปุ่มเปิดหน้าผู้ขอ + (เฉพาะเรียกคิว) ปุ่มยืนยัน/ไม่ยืนยันในแชท ถ้าเปิด webhook ไว้ */
+  private async flex(title: string, text: string, button: string | undefined, type: NotifyType, requestId: number) {
+    const [liff, base, hook, callBtns, secret] = await Promise.all([getSetting<string>('liff_id'), getSetting<string>('public_base_url'), getSetting<boolean>('line_webhook_enabled'), getSetting<boolean>('line_call_buttons'), getSetting<string>('line_channel_secret')]);
     const url = liff ? `https://liff.line.me/${liff}` : base || null;
-    return {
-      type: 'flex',
-      altText: title,
-      contents: {
-        type: 'bubble',
-        header: { type: 'box', layout: 'vertical', backgroundColor: '#2F6B4F', paddingAll: '16px', contents: [{ type: 'text', text: title, color: '#FFFFFF', weight: 'bold', size: 'md', wrap: true }] },
-        body: { type: 'box', layout: 'vertical', paddingAll: '16px', contents: [{ type: 'text', text, wrap: true, size: 'sm', color: '#1F2A24' }] },
-        ...(button && url ? { footer: { type: 'box', layout: 'vertical', paddingAll: '12px', contents: [{ type: 'button', style: 'primary', height: 'sm', color: '#2F6B4F', action: { type: 'uri', label: button, uri: url } }] } } : {}),
-      },
-    };
+    const buttons: Btn[] = [];
+    if (type === 'CALLED' && hook && callBtns && secret) {
+      buttons.push({ label: 'ยืนยันส่งตัว', data: `a=confirm&r=${requestId}`, displayText: 'ยืนยันส่งตัว' }, { label: 'ไม่ยืนยัน', style: 'secondary', data: `a=decline&r=${requestId}` });
+    }
+    if (button && url) buttons.push({ label: button, style: buttons.length ? 'secondary' : 'primary', uri: url });
+    return card(title, text, buttons);
   }
 }

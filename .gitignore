@@ -22,3 +22,4 @@ database/*
 # ผล coverage และโฟลเดอร์ทำงานของ SonarScanner
 coverage/
 .scannerwork/
+dist-liff/

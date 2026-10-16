@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build --config vite.liff.config.ts",
     "preview": "vite preview",
     "check": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource/anuphan": "^5.2.0",
     "@fontsource/sarabun": "^5.2.0",
+    "@line/liff": "^2.27.2",
     "@radix-ui/react-dialog": "^1.1.0",
     "@tailwindcss/vite": "^4.1.0",
     "class-variance-authority": "^0.7.1",

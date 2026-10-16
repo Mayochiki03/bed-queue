@@ -18,6 +18,10 @@ declare module 'express-serve-static-core' {
   }
 }
 
+/**
+ * พอร์ต INTERNAL (LAN เท่านั้น) — ทุกหน้า: หน้าเจ้าหน้าที่ /admin + API ทั้งหมด
+ * (ชื่อ createApp คงไว้เพราะชุดทดสอบใช้ตัวนี้)
+ */
 export function createApp() {
   const app = express();
   app.set('trust proxy', config.trustProxy);
@@ -47,26 +51,30 @@ export function createApp() {
   api.use((_req, _res, next) => next(notFound('ไม่พบ API นี้')));
   app.use('/api', api);
 
-  // production: เสิร์ฟหน้าเว็บที่ build แล้ว (npm run build)
-  if (fs.existsSync(path.join(config.frontendDist, 'index.html'))) {
-    app.use(express.static(config.frontendDist));
-    app.use((req, res, next) => (req.method === 'GET' ? res.sendFile(path.join(config.frontendDist, 'index.html')) : next()));
+  // production: เสิร์ฟหน้าเว็บที่ build แล้ว (npm run build) — หน้าเจ้าหน้าที่อยู่ที่ /admin (เหมือนระบบนวด) · / พาไป /admin
+  const index = path.join(config.frontendDist, 'index.html');
+  if (fs.existsSync(index)) {
+    app.use(express.static(config.frontendDist, { index: false }));
+    app.get('/', (_req, res) => res.redirect('/admin/'));
+    app.get(/^\/admin(\/.*)?$/, (_req, res) => res.sendFile(index));
   }
 
-  // ตัวจัดการ error กลาง — ทุก throw ในหน้าต่าง ๆ มาจบที่นี่ และตอบรูปแบบเดียวกันหมด
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    const e = err instanceof ZodError ? fromZod(err) : err;
-    if (e instanceof HttpError) {
-      res.status(e.httpStatus).json({ status: e.status, message: e.message, fields: e.fields });
-      return;
-    }
-    if (typeof e === 'object' && e && (e as { type?: string }).type === 'entity.parse.failed') {
-      res.status(400).json({ status: 'VALIDATION', message: 'รูปแบบข้อมูลที่ส่งมาไม่ถูกต้อง' });
-      return;
-    }
-    console.error('[error]', e);
-    res.status(500).json({ status: 'ERROR', message: 'เกิดข้อผิดพลาดในระบบ' });
-  });
+  app.use(errorHandler);
 
   return app;
+}
+
+/** ตัวจัดการ error กลาง — ทุก throw ในหน้าต่าง ๆ มาจบที่นี่ และตอบรูปแบบเดียวกันหมด (ใช้ทั้งสองพอร์ต) */
+export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  const e = err instanceof ZodError ? fromZod(err) : err;
+  if (e instanceof HttpError) {
+    res.status(e.httpStatus).json({ status: e.status, message: e.message, fields: e.fields });
+    return;
+  }
+  if (typeof e === 'object' && e && (e as { type?: string }).type === 'entity.parse.failed') {
+    res.status(400).json({ status: 'VALIDATION', message: 'รูปแบบข้อมูลที่ส่งมาไม่ถูกต้อง' });
+    return;
+  }
+  console.error('[error]', e);
+  res.status(500).json({ status: 'ERROR', message: 'เกิดข้อผิดพลาดในระบบ' });
 }

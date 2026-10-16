@@ -67,7 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const finishMfa = useCallback((u: User) => {
     setPendingMfa(null);
-    setUser(u);
+    setUser({ ...u, mfa_enabled: true }); // ผ่านขั้น 2FA ได้ แปลว่าผูกแอปแล้วแน่นอน (toSessionUser ไม่มีฟิลด์นี้)
   }, []);
   const cancelMfa = useCallback(() => setPendingMfa(null), []);
 

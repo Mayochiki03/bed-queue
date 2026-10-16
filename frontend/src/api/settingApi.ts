@@ -16,7 +16,7 @@ export type SettingItem = {
 };
 export type UiSettings = { confirm_timeout_hours: number; queue_display: 'all' | 'color'; dashboard_default_days: number; dashboard_top_n: number; pdpa_notice: string };
 
-export type TestKind = 'database' | 'encryption' | 'time' | 'public_url' | 'line_token' | 'line_quota' | 'line_push';
+export type TestKind = 'database' | 'encryption' | 'time' | 'public_url' | 'line_token' | 'line_quota' | 'line_push' | 'line_webhook';
 export type TestResult = { ok: boolean; title: string; detail: string };
 
 export const settingApi = {
