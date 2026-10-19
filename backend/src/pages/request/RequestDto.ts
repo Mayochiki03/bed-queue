@@ -84,9 +84,21 @@ export type RequestUpdateDto = z.infer<typeof requestUpdateDto>;
 
 export const requestIdDto = z.object({ id: idField });
 
+/** วันที่ YYYY-MM-DD (วันที่ต้องมีอยู่จริง เช่น 2026-02-30 ไม่ผ่าน) */
+export const dateOnly = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'วันที่ไม่ถูกต้อง')
+  .refine((v) => {
+    const d = new Date(`${v}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+  }, 'วันที่ไม่ถูกต้อง');
+
 export const requestTransitionDto = z.object({
   id: idField,
   action: z.enum(ACTIONS),
+  /** วันที่เตียงว่างรับ — บังคับเมื่อเรียกคิว (CALL) และเมื่อยืนยันจากสถานะรอนัดวัน · ยืนยันจากสถานะเรียกแล้วใส่เพื่อเปลี่ยนวันได้ */
+  bed_date: dateOnly.nullish().transform((v) => v ?? null),
   /** ช่องทางที่ได้ผล: PHONE = โทรคุยกันแล้ว (ค่าเริ่มต้นของเจ้าหน้าที่) · ADMIN = เจ้าหน้าที่ตัดสินใจเอง */
   via: z.enum(VIAS).default('PHONE'),
   note: optText('หมายเหตุ', 300),
@@ -122,4 +134,10 @@ export type RequesterProfileDto = z.infer<typeof requesterProfileDto>;
 
 export const submitDto = z.object(patientShape);
 export type SubmitDto = z.infer<typeof submitDto>;
-export const respondDto = z.object({ id: idField, accept: z.boolean() });
+/** ผู้ขอตอบหลังถูกเรียกคิว: answer = CONFIRM ยืนยัน · DEFER ยืนยันจะมาแต่วันที่แจ้งไม่สะดวก · DECLINE ไม่ยืนยัน (ส่ง accept แบบเดิมก็ได้) */
+export const respondShape = { id: idField, accept: z.boolean().optional(), answer: z.enum(['CONFIRM', 'DEFER', 'DECLINE']).optional() };
+export const answerOf = (v: { accept?: boolean; answer?: 'CONFIRM' | 'DEFER' | 'DECLINE' }) => v.answer ?? (v.accept ? ('CONFIRM' as const) : ('DECLINE' as const));
+export const respondDto = z
+  .object(respondShape)
+  .refine((v) => v.answer !== undefined || v.accept !== undefined, { message: 'ต้องระบุคำตอบ', path: ['answer'] })
+  .transform((v) => ({ id: v.id, answer: answerOf(v) }));

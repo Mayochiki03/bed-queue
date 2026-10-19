@@ -1,11 +1,13 @@
 /** api/requestApi.ts — API คิวคำขอเตียง (บอร์ดคิว / ประวัติ / เรียกคิว / บันทึกผล) */
 import { api, type PageResult } from './client';
 
-export type Status = 'WAITING' | 'CALLED' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED';
-export const STATUS_LABEL: Record<Status, string> = { WAITING: 'รอคิว', CALLED: 'เรียกแล้ว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก' };
+export type Status = 'WAITING' | 'CALLED' | 'NEED_DATE' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED';
+/** สถานะที่ยังไม่จบ (ยังอยู่บนบอร์ด) */
+export const OPEN_STATUSES: Status[] = ['WAITING', 'CALLED', 'NEED_DATE'];
+export const STATUS_LABEL: Record<Status, string> = { WAITING: 'รอคิว', CALLED: 'เรียกแล้ว', NEED_DATE: 'ยืนยันจะมา รอนัดวัน', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก' };
 export const STATUS_OPTIONS = (Object.keys(STATUS_LABEL) as Status[]).map((v) => ({ value: v, label: STATUS_LABEL[v] }));
 
-export type Action = 'CALL' | 'CONFIRM' | 'DECLINE' | 'CANCEL' | 'REQUEUE' | 'REOPEN';
+export type Action = 'CALL' | 'CONFIRM' | 'DEFER' | 'DECLINE' | 'CANCEL' | 'REQUEUE' | 'REOPEN';
 export type Via = 'LINE' | 'PHONE' | 'ADMIN' | 'SYSTEM';
 
 export type RequestBase = {
@@ -30,6 +32,8 @@ export type RequestBase = {
   status: Status;
   submitted_at: string;
   called_at: string | null;
+  /** วันที่เตียงว่างรับ (YYYY-MM-DD) — เสนอตอนเรียกคิว / ตกลงแล้วตอนยืนยัน */
+  bed_date: string | null;
   call_count: number;
   responded_at: string | null;
   resolved_at: string | null;
@@ -37,7 +41,7 @@ export type RequestBase = {
   source: string;
 };
 
-export type BoardItem = RequestBase & { position_all: number | null; position_color: number | null; wait_days: number; overdue: boolean; called_hours: number | null };
+export type BoardItem = RequestBase & { position_all: number | null; position_color: number | null; wait_days: number; overdue: boolean; called_hours: number | null; deferred_hours: number | null };
 export type BoardData = { now: string; timeout_hours: number; items: BoardItem[] };
 
 export type RequestEvent = { id: number; event: string; from_status: string | null; to_status: string | null; by_label: string | null; via: string | null; detail: string | null; changes: string | null; created_at: string };
@@ -113,7 +117,7 @@ export const requestApi = {
     void _r;
     return api.post<{ id: number }>('/request/update', { id, ...rest });
   },
-  transition: (id: number, action: Action, opts: { via?: Via; note?: string } = {}) => api.post<{ id: number; status: Status }>('/request/transition', { id, action, ...opts }),
+  transition: (id: number, action: Action, opts: { via?: Via; note?: string; bed_date?: string } = {}) => api.post<{ id: number; status: Status }>('/request/transition', { id, action, ...opts }),
   transfer: (id: number, requester_id: number) => api.post<{ id: number }>('/request/transfer', { id, requester_id }),
   requesters: (hospital_id: number) => api.post<RequesterOption[]>('/request/requesters', { hospital_id }),
 };

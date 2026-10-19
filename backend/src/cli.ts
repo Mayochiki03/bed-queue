@@ -5,6 +5,7 @@ import { ensureAdmin } from './core/auth';
 import { checkConnection, closeDb } from './core/db';
 import { migrateLatest, migrateRollback, migrateStatus, resetDb } from './core/migrate';
 import { config } from './core/config';
+import { clearMock, createMock } from './mockData';
 
 const cmd = process.argv[2];
 
@@ -38,8 +39,21 @@ async function main() {
       console.log('รีเซ็ตฐานข้อมูลแล้ว (ข้อมูลเดิมถูกลบทั้งหมด)');
       break;
     }
+    case 'mock': {
+      if (config.isProd) throw new Error('ห้ามสร้างข้อมูลตัวอย่างบน production');
+      await migrateLatest(); // ถ้าเพิ่งอัปเดตโค้ดแล้วยังไม่ได้เปิดระบบ ตารางอาจยังไม่ครบ
+      const r = await createMock({ force: process.argv.includes('--force') });
+      console.log(`สร้างข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง ${r.requesters} คน · คำขอ ${r.requests} รายการ (โรงพยาบาล ${r.hospitals} แห่ง)\nลบทิ้งได้ด้วย: npm run mock:clear หรือปุ่ม "ล้างข้อมูลจำลอง" ในเมนูผู้ขอจำลอง`);
+      break;
+    }
+    case 'mock-clear': {
+      await migrateLatest();
+      const r = await clearMock();
+      console.log(`ลบข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง ${r.requesters} คน · คำขอ ${r.requests} รายการ (โรงพยาบาลที่เพิ่มไว้ไม่ถูกลบ)`);
+      break;
+    }
     default:
-      console.log('ใช้: npm run migrate | migrate:status | db:reset | seed');
+      console.log('ใช้: npm run migrate | migrate:status | db:reset | seed | mock | mock:clear');
   }
 }
 

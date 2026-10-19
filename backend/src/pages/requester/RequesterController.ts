@@ -5,12 +5,14 @@
  *
  *   POST /api/requester/boot          {}  ค่าที่ต้องรู้ก่อนล็อกอิน LINE: liff_id, ชื่อระบบ
  *   POST /api/requester/ui            {}  ข้อความ PDPA ฯลฯ        POST /api/requester/lookups {}  สี/สาร/เหตุผล
+ *   POST /api/requester/hospital-check { code }  ค้นชื่อ รพ. จากรหัส (เติมชื่อในฟอร์มลงทะเบียน)
  *   POST /api/requester/profile | save-profile | submit | mine | cancel | respond
  */
 import { Router, type Request, type Response } from 'express';
 import { config } from '../../core/config';
 import { idField, ok, parse } from '../../core/http';
 import { getSetting } from '../../core/settings';
+import { hospitalCodeField } from '../hospital/HospitalDto';
 import { lookupService } from '../lookup';
 import { requesterProfileDto, respondDto, submitDto } from '../request/RequestDto';
 import type { RequesterService } from '../request/RequesterService';
@@ -30,6 +32,10 @@ export class RequesterController {
     r.post('/lookups', async (_req: Request, res: Response) => res.json(ok(await lookupService.options())));
 
     r.post('/profile', requireLine, async (req, res) => res.json(ok(await this.svc.profile(req.line!.userId))));
+    r.post('/hospital-check', requireLine, async (req, res) => {
+      const { code } = parse(z.object({ code: hospitalCodeField }), req.body);
+      res.json(ok(await this.svc.hospitalCheck(code)));
+    });
     r.post('/save-profile', requireLine, async (req, res) => {
       const dto = parse(requesterProfileDto, req.body?.profile ?? {});
       res.json(ok(await this.svc.saveProfile(req.line!.userId, req.line!.name, dto), 'บันทึกข้อมูลผู้ขอแล้ว'));
@@ -45,7 +51,7 @@ export class RequesterController {
     });
     r.post('/respond', requireLine, async (req, res) => {
       const dto = parse(respondDto, req.body);
-      res.json(ok(await this.svc.respond(req.line!.userId, dto.id, dto.accept), dto.accept ? 'ยืนยันแล้ว' : 'แจ้งไม่ยืนยันแล้ว'));
+      res.json(ok(await this.svc.respond(req.line!.userId, dto.id, dto.answer), { CONFIRM: 'ยืนยันแล้ว', DEFER: 'บันทึกแล้ว เจ้าหน้าที่จะโทรกลับเพื่อนัดวัน', DECLINE: 'แจ้งไม่ยืนยันแล้ว' }[dto.answer]));
     });
   }
 }

@@ -34,6 +34,7 @@ export class DashboardService {
     // ---- คิวปัจจุบัน ----
     const waiting = open.filter((r) => r.status === 'WAITING');
     const called = open.filter((r) => r.status === 'CALLED');
+    const needDate = open.filter((r) => r.status === 'NEED_DATE');
     const overdue = called.filter((r) => r.called_at && now.getTime() - new Date(r.called_at).getTime() > timeoutHours * 3_600_000).length;
     const byColor = new Map<string, { count: number; oldest: string | null }>();
     for (const r of waiting) {
@@ -104,6 +105,7 @@ export class DashboardService {
       queue: {
         waiting: waiting.length,
         called: called.length,
+        need_date: needDate.length,
         overdue,
         by_color: [...byColor.entries()].map(([code, v]) => ({ code, count: v.count, oldest_days: v.oldest ? round1(daysBetween(v.oldest, nowIso)) : null })),
       },

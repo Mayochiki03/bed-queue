@@ -15,6 +15,7 @@ export const menu: MenuGroup[] = [
     children: [
       { label: 'บอร์ดคิว', path: '/queue' },
       { label: 'ประวัติคำขอ', path: '/history' },
+      { label: 'สมาชิก รพ.', path: '/member' },
     ],
   },
   {

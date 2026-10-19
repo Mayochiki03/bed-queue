@@ -8,6 +8,7 @@ import { STATUS_LABEL, type Status } from '../../api/requestApi';
 const STATUS_STYLE: Record<Status, string> = {
   WAITING: 'bg-info-soft text-info-ink',
   CALLED: 'bg-warn-soft text-warn-ink',
+  NEED_DATE: 'bg-accent-soft text-accent-ink',
   CONFIRMED: 'bg-success-soft text-success-ink',
   DECLINED: 'bg-neutral-soft text-neutral-ink',
   CANCELLED: 'bg-neutral-soft text-neutral-ink',
@@ -43,6 +44,7 @@ export const EVENT_LABEL: Record<string, string> = {
   SUBMITTED: 'ส่งคำขอ',
   CALLED: 'เรียกคิว',
   CONFIRMED: 'ยืนยันส่งตัว',
+  DEFERRED: 'ยืนยันจะมา ขอเลื่อนวัน',
   DECLINED: 'ไม่ยืนยัน',
   CANCELLED: 'ยกเลิก',
   REQUEUED: 'คืนคิว',

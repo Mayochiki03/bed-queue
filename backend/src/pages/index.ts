@@ -11,6 +11,7 @@ import { exportPage } from './export';
 import { hospitalPage } from './hospital';
 import { linePage } from './line';
 import { logPage } from './log';
+import { memberPage } from './member';
 import { notificationPage } from './notification';
 import { lookupPage } from './lookup';
 import { requestPage } from './request';
@@ -26,6 +27,7 @@ export const pages: PageDef[] = [
   dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
   exportPage, // ส่งออก Excel (รายงาน+กราฟ+ข้อมูลละเอียด)
   notificationPage, // ข้อความแจ้งเตือน LINE (เลือกเปิด/ปิด + ประวัติการส่ง)
+  memberPage, // สมาชิก รพ. — อนุมัติผู้ที่ลงทะเบียนผ่าน LINE
   requesterPage, // API ฝั่งผู้ขอผ่าน LINE (LIFF) — public ตรวจ ID token ของ LINE เอง
   linePage, // LINE webhook (ตอบ "สถานะ" + ปุ่มยืนยันในแชท) — public ตรวจลายเซ็นเอง
   userPage, // ผู้ใช้งาน

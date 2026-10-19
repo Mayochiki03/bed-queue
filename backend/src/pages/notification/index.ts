@@ -12,7 +12,7 @@ import { NotificationService } from './NotificationService';
 export const notificationService = new NotificationService(new NotificationRepository());
 
 // ผูกเหตุการณ์ของคิวเข้ากับการส่งแจ้งเตือน (ส่งไม่สำเร็จไม่กระทบงานหลัก — notify จับ error เอง)
-requestService.hooks.notify = (type, requestId, toRequesterId) => notificationService.notify(type, requestId, toRequesterId);
+requestService.hooks.notify = (type, requestId, toRequesterId, extra) => notificationService.notify(type, requestId, toRequesterId, extra);
 
 export const notificationPage = definePage({
   name: 'notification',

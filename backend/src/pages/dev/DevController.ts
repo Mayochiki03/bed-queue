@@ -15,9 +15,10 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { config } from '../../core/config';
 import { db } from '../../core/db';
-import { idField, notFound, ok, parse } from '../../core/http';
+import { badRequest, idField, notFound, ok, parse } from '../../core/http';
 import { getSetting } from '../../core/settings';
-import { requesterProfileDto, respondDto, submitDto } from '../request/RequestDto';
+import { answerOf, requesterProfileDto, respondShape, submitDto } from '../request/RequestDto';
+import { hospitalCodeField } from '../hospital/HospitalDto';
 import { requestRepository, requesterService } from '../request';
 
 /** เวอร์ชันฐานข้อมูล (MariaDB/MySQL/PostgreSQL ต่างคำสั่งกัน) */
@@ -68,13 +69,19 @@ devRouter.post('/mock/list', async (_req: Request, res: Response) => {
 devRouter.post('/mock/create', async (req: Request, res: Response) => {
   const dto = parse(requesterProfileDto, { ...req.body, accept_pdpa: true });
   const line = `MOCK-${randomBytes(6).toString('hex')}`;
-  const v = await requesterService.saveProfile(line, `ผู้ขอจำลอง ${dto.full_name}`, dto);
+  const v = await requesterService.saveProfile(line, `ผู้ขอจำลอง ${dto.full_name}`, dto, { mock: true });
   res.status(201).json(ok({ id: v.id }, 'สร้างผู้ขอจำลองแล้ว'));
 });
 
 devRouter.post('/mock/clear', async (_req: Request, res: Response) => {
   const r = await requestRepository.deleteMockData();
   res.json(ok(r, `ลบผู้ขอจำลอง ${r.requesters} คน และคำขอ ${r.requests} รายการ`));
+});
+
+/** ค้นชื่อ รพ. จากรหัส (ฟอร์มสมัครของผู้ขอจำลองใช้ร่วมกับหน้าจริง) */
+devRouter.post('/hospital-check', async (req: Request, res: Response) => {
+  const { code } = parse(z.object({ code: hospitalCodeField }), req.body);
+  res.json(ok(await requesterService.hospitalCheck(code)));
 });
 
 devRouter.post('/as/profile', async (req: Request, res: Response) => {
@@ -86,7 +93,7 @@ devRouter.post('/as/profile', async (req: Request, res: Response) => {
 devRouter.post('/as/save-profile', async (req: Request, res: Response) => {
   const dto = parse(asDto({ profile: requesterProfileDto }), req.body);
   const { line } = await mockLine(dto.requester_id);
-  res.json(ok(await requesterService.saveProfile(line, null, { ...dto.profile, accept_pdpa: true }), 'บันทึกข้อมูลผู้ขอแล้ว'));
+  res.json(ok(await requesterService.saveProfile(line, null, { ...dto.profile, accept_pdpa: true }, { mock: true }), 'บันทึกข้อมูลผู้ขอแล้ว'));
 });
 
 devRouter.post('/as/submit', async (req: Request, res: Response) => {
@@ -108,8 +115,10 @@ devRouter.post('/as/cancel', async (req: Request, res: Response) => {
 });
 
 devRouter.post('/as/respond', async (req: Request, res: Response) => {
-  const dto = parse(asDto({ id: idField, accept: respondDto.shape.accept }), req.body);
+  const dto = parse(asDto(respondShape), req.body);
+  if (dto.answer === undefined && dto.accept === undefined) throw badRequest('ต้องระบุคำตอบ (answer)', { answer: 'ต้องระบุ' });
   const { line } = await mockLine(dto.requester_id);
-  res.json(ok(await requesterService.respond(line, dto.id, dto.accept), dto.accept ? 'ยืนยันแล้ว' : 'แจ้งไม่ยืนยันแล้ว'));
+  const answer = answerOf(dto);
+  res.json(ok(await requesterService.respond(line, dto.id, answer), { CONFIRM: 'ยืนยันแล้ว', DEFER: 'บันทึกแล้ว เจ้าหน้าที่จะโทรกลับเพื่อนัดวัน', DECLINE: 'แจ้งไม่ยืนยันแล้ว' }[answer]));
 });
 

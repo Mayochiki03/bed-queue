@@ -28,8 +28,8 @@ export class NotificationRepository {
         this.on('rs.code', 'r.reason_code').andOn('rs.type', db.raw('?', ['REASON']));
       })
       .where('r.id', requestId)
-      .first('r.id', 'r.request_no', 'r.requester_name', 'r.requester_id', 'h.name as hospital_name', 'q.line_user_id', 'c.label as color_name', 'rs.label as reason_name') as Promise<
-      { id: number; request_no: string | null; requester_name: string; requester_id: number | null; hospital_name: string | null; line_user_id: string | null; color_name: string | null; reason_name: string | null } | undefined
+      .first('r.id', 'r.request_no', 'r.requester_name', 'r.requester_id', 'r.bed_date', 'h.name as hospital_name', 'q.line_user_id', 'c.label as color_name', 'rs.label as reason_name') as Promise<
+      { id: number; request_no: string | null; requester_name: string; requester_id: number | null; bed_date: string | null; hospital_name: string | null; line_user_id: string | null; color_name: string | null; reason_name: string | null } | undefined
     >;
   }
 

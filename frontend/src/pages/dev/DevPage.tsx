@@ -115,6 +115,7 @@ export default function DevPage() {
           <div className="mx-auto w-full max-w-[24rem] lg:mx-0">
             <div className="overflow-hidden rounded-[2rem] border-[6px] border-neutral-ink/80 bg-background shadow-lg">
               <RegisterFlow
+                checkHospital={devApi.checkHospital}
                 onRegister={async (p) => {
                   const res = await devApi.create(p);
                   if (res.ok && res.data) {
@@ -179,7 +180,8 @@ function PhoneView({ requesterId, onProfileChanged }: { requesterId: number; onP
       submit: (r) => devApi.submit(requesterId, r),
       mine: () => devApi.mine(requesterId),
       cancel: (id) => devApi.cancel(requesterId, id),
-      respond: (id, accept) => devApi.respond(requesterId, id, accept),
+      respond: (id, answer) => devApi.respond(requesterId, id, answer),
+      checkHospital: devApi.checkHospital,
     }),
     [requesterId],
   );

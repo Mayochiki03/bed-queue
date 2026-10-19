@@ -20,4 +20,18 @@ export const hospitalMigrations: Migration[] = [
       await db.schema.dropTableIfExists('hospital');
     },
   },
+  {
+    // เขตสุขภาพ 1-14 (ว่างได้ — โรงพยาบาลที่ผู้ขอพิมพ์เองในรุ่นก่อนยังไม่มีเขต)
+    name: '20261019_12_hospital_region',
+    async up(db) {
+      await db.schema.alterTable('hospital', (t) => {
+        t.integer('health_region').nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.alterTable('hospital', (t) => {
+        t.dropColumn('health_region');
+      });
+    },
+  },
 ];

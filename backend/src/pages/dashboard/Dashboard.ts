@@ -10,7 +10,7 @@ export type SubstanceStat = { code: string; submitted: number; confirmed: number
 export type DashboardSummary = {
   days: number;
   /** สถานะปัจจุบันของคิว (ไม่ขึ้นกับช่วงเวลา) */
-  queue: { waiting: number; called: number; overdue: number; by_color: ColorQueue[] };
+  queue: { waiting: number; called: number; need_date: number; overdue: number; by_color: ColorQueue[] };
   /** ผลลัพธ์ของคำขอที่ส่งเข้ามาในช่วงเวลา */
   period: { submitted: number; confirmed: number; declined: number; cancelled: number; avg_days_to_confirm: number | null; min_days_to_confirm: number | null; max_days_to_confirm: number | null };
   trend: TrendPoint[];

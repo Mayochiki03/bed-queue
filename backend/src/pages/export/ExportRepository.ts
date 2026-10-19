@@ -1,6 +1,7 @@
 /** ExportRepository.ts — ดึงข้อมูลดิบสำหรับส่งออก Excel (อ่านอย่างเดียว) — ใช้เงื่อนไขกรองเดียวกับหน้าประวัติคำขอ */
 import type { Knex } from 'knex';
 import { db } from '../../core/db';
+import { OPEN_STATUSES } from '../request/Request';
 import { applyRequestFilters, type RequestFilters } from '../request/RequestRepository';
 
 const MAX_ROWS = 100_000;
@@ -36,6 +37,7 @@ export type RequestExportRow = {
   source: string;
   submitted_at: string;
   called_at: string | null;
+  bed_date: string | null;
   call_count: number;
   responded_at: string | null;
   resolved_at: string | null;
@@ -102,7 +104,7 @@ export class ExportRepository {
       .orderBy('q.full_name')
       .limit(MAX_ROWS);
     const counts = (await db('bed_request').groupBy('requester_id').select('requester_id').count({ n: '*' })) as unknown as { requester_id: number | null; n: number | string }[];
-    const open = (await db('bed_request').whereIn('status', ['WAITING', 'CALLED']).groupBy('requester_id').select('requester_id').count({ n: '*' })) as unknown as { requester_id: number | null; n: number | string }[];
+    const open = (await db('bed_request').whereIn('status', OPEN_STATUSES).groupBy('requester_id').select('requester_id').count({ n: '*' })) as unknown as { requester_id: number | null; n: number | string }[];
     return {
       rows: rows as {
         id: number;

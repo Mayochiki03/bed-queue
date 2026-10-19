@@ -3,6 +3,7 @@
  * ปริมาณคำขอระดับโรงพยาบาลเดียว (หลักพัน-หมื่น) ถือว่าพอ ถ้าโตมากให้ย้ายไปรวมตัวเลขใน SQL
  */
 import { db } from '../../core/db';
+import { OPEN_STATUSES } from '../request/Request';
 
 export type DashRow = {
   id: number;
@@ -18,9 +19,9 @@ export type DashRow = {
 const COLS = ['id', 'hospital_id', 'color_code', 'substance_code', 'status', 'submitted_at', 'called_at', 'resolved_at'];
 
 export class DashboardRepository {
-  /** คิวที่ยังเปิดอยู่ (รอ/เรียกแล้ว) — ทั้งหมด ไม่จำกัดช่วงเวลา */
+  /** คิวที่ยังเปิดอยู่ (รอ/เรียกแล้ว/รอนัดวัน) — ทั้งหมด ไม่จำกัดช่วงเวลา */
   openQueue(): Promise<DashRow[]> {
-    return db('bed_request').whereIn('status', ['WAITING', 'CALLED']).select(COLS);
+    return db('bed_request').whereIn('status', OPEN_STATUSES).select(COLS);
   }
 
   /** คำขอที่ส่งเข้ามาตั้งแต่เวลาที่กำหนด */

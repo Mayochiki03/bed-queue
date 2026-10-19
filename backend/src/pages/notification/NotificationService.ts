@@ -7,6 +7,7 @@
  */
 import { notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
+import { formatThaiDate } from '../../core/thaiDate';
 import { lineClient } from './LineClient';
 import { card, type Btn } from './LineFlex';
 import { TEMPLATE_DEFS, TEMPLATE_VARS, type NotifyType } from './Notification';
@@ -69,7 +70,7 @@ export class NotificationService {
    * ส่งแจ้งเตือนชนิด type ของคำขอ requestId — ไม่ throw
    * toRequesterId: ส่งหาผู้ขออีกคน (เช่น โอนเคส ส่งหาผู้ขอคนใหม่) ไม่ใส่ = ผู้ขอเจ้าของคำขอ
    */
-  async notify(type: NotifyType, requestId: number, toRequesterId?: number): Promise<void> {
+  async notify(type: NotifyType, requestId: number, toRequesterId?: number, extra: { staff_name?: string } = {}): Promise<void> {
     try {
       const tpl = (await this.repo.template(type)) ?? undefined;
       const def = TEMPLATE_DEFS.find((d) => d.type === type)!;
@@ -94,10 +95,16 @@ export class NotificationService {
         requester_name: ctx.requester_name,
         color: ctx.color_name ?? '-',
         reason: ctx.reason_name ?? '-',
+        bed_date: formatThaiDate(ctx.bed_date) || '-',
+        staff_name: extra.staff_name ?? 'เจ้าหน้าที่',
         timeout_hours: String(timeout),
       };
       const title = tpl?.title ?? def.title;
-      const text = fill(tpl?.body ?? def.body, vars);
+      const rawBody = tpl?.body ?? def.body;
+      let text = fill(rawBody, vars);
+      // ข้อความที่แอดมินเคยแก้ไว้ก่อนมีเรื่องวันที่ อาจไม่มี {bed_date}/{staff_name} — เติมท้ายข้อความให้ ผู้ขอจะได้ไม่พลาดวันและผู้ยืนยัน
+      if ((type === 'CALLED' || type === 'CONFIRMED') && ctx.bed_date && !rawBody.includes('{bed_date}')) text += `\n${type === 'CALLED' ? 'เตียงว่างรับวันที่' : 'วันที่ส่งตัว'}: ${vars.bed_date}`;
+      if (type === 'CONFIRMED' && !rawBody.includes('{staff_name}')) text += `\nยืนยันโดยเจ้าหน้าที่ ${vars.staff_name}`;
       const r = await lineClient.push(target.line_user_id, [await this.flex(title, text, def.button, type, requestId)]);
       if (r.ok) await log('SENT', null);
       else await log('FAILED', (r.data?.message ?? (r.status === -1 ? 'ติดต่อ LINE ไม่ได้ (หมดเวลา)' : `LINE ตอบ ${r.status}`)).slice(0, 500));
@@ -117,7 +124,11 @@ export class NotificationService {
     const url = liff ? `https://liff.line.me/${liff}` : base || null;
     const buttons: Btn[] = [];
     if (type === 'CALLED' && hook && callBtns && secret) {
-      buttons.push({ label: 'ยืนยันส่งตัว', data: `a=confirm&r=${requestId}`, displayText: 'ยืนยันส่งตัว' }, { label: 'ไม่ยืนยัน', style: 'secondary', data: `a=decline&r=${requestId}` });
+      buttons.push(
+        { label: 'ยืนยันตามวันที่แจ้ง', data: `a=confirm&r=${requestId}`, displayText: 'ยืนยันตามวันที่แจ้ง' },
+        { label: 'ส่งได้ ขอเลื่อนวัน', style: 'secondary', data: `a=defer&r=${requestId}`, displayText: 'ส่งตัวได้ แต่วันที่แจ้งไม่สะดวก' },
+        { label: 'ไม่ยืนยัน', style: 'secondary', data: `a=decline&r=${requestId}` },
+      );
     }
     if (button && url) buttons.push({ label: button, style: buttons.length ? 'secondary' : 'primary', uri: url });
     return card(title, text, buttons);

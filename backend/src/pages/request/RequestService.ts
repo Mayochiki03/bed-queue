@@ -7,7 +7,8 @@
  */
 import { badRequest, conflict, notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
-import { TRANSITIONS, type BedRequest, type BoardItem, type EventChange, type Requester, type Status } from './Request';
+import { formatThaiDate, thaiToday } from '../../core/thaiDate';
+import { OPEN_STATUSES, STATUS_LABEL, TRANSITIONS, type BedRequest, type BoardItem, type EventChange, type Requester, type Status } from './Request';
 import type { RequestAddDto, RequestSearchDto, RequestTransitionDto, RequestUpdateDto } from './RequestDto';
 import type { RequestRepository } from './RequestRepository';
 
@@ -15,7 +16,7 @@ const DAY = 86_400_000;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 export type Actor = { id: number; full_name: string };
 
-export type NotifyHook = (type: 'SUBMITTED' | 'CALLED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED', requestId: number, toRequesterId?: number) => Promise<void>;
+export type NotifyHook = (type: 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED', requestId: number, toRequesterId?: number, extra?: { staff_name?: string }) => Promise<void>;
 
 export class RequestService {
   constructor(private repo: RequestRepository) {}
@@ -46,6 +47,7 @@ export class RequestService {
         wait_days: round1((now.getTime() - new Date(r.submitted_at).getTime()) / DAY),
         overdue: r.status === 'CALLED' && calledMs !== null && calledMs > timeoutHours * 3_600_000,
         called_hours: r.status === 'CALLED' && calledMs !== null ? round1(calledMs / 3_600_000) : null,
+        deferred_hours: r.status === 'NEED_DATE' && r.responded_at ? round1((now.getTime() - new Date(r.responded_at).getTime()) / 3_600_000) : null,
       };
     });
     return { now: now.toISOString(), timeout_hours: timeoutHours, items };
@@ -169,7 +171,7 @@ export class RequestService {
     }
     await this.assertCodes(dto, cur);
     if (dto.patient_name !== cur.patient_name || dto.hospital_id !== cur.hospital_id) {
-      if (cur.status === 'WAITING' || cur.status === 'CALLED') await this.assertNoDuplicate(dto.hospital_id, dto.patient_name, cur.id);
+      if (OPEN_STATUSES.includes(cur.status)) await this.assertNoDuplicate(dto.hospital_id, dto.patient_name, cur.id);
     }
 
     const { id, ...patch } = dto;
@@ -203,20 +205,43 @@ export class RequestService {
    * เรียกคิว/ยืนยัน/ไม่ยืนยัน/ยกเลิก/คืนคิว/เปิดใหม่
    * by = ผู้ทำ (เจ้าหน้าที่ หรือชื่อผู้ขอเมื่อผู้ขอตอบเอง) · via = LINE | PHONE | ADMIN | SYSTEM
    */
-  async transition(dto: Pick<RequestTransitionDto, 'id' | 'action' | 'via'> & { note?: string | null }, by: { user_id: number | null; label: string }) {
+  async transition(dto: Pick<RequestTransitionDto, 'id' | 'action' | 'via'> & { note?: string | null; bed_date?: string | null }, by: { user_id: number | null; label: string }) {
     const rule = TRANSITIONS[dto.action];
     const cur = await this.repo.findById(dto.id);
     if (!cur) throw notFound('ไม่พบคำขอนี้');
     if (!rule.from.includes(cur.status)) {
-      throw conflict(`ทำ "${rule.label}" ไม่ได้ — คำขอนี้อยู่ในสถานะ "${statusLabel(cur.status)}" (อาจมีคนเปลี่ยนไปก่อนแล้ว กรุณาโหลดหน้าใหม่)`);
+      throw conflict(`ทำ "${rule.label}" ไม่ได้ — คำขอนี้อยู่ในสถานะ "${STATUS_LABEL[cur.status]}" (อาจมีคนเปลี่ยนไปก่อนแล้ว กรุณาโหลดหน้าใหม่)`);
     }
     const now = new Date().toISOString();
+    const today = thaiToday();
     const patch: Record<string, unknown> = { status: rule.to };
+    const bits: string[] = []; // ข้อความในประวัติ (วันที่ + หมายเหตุของเจ้าหน้าที่)
+    let notifyConfirmed = false;
+    const needDate = (label: string) => {
+      if (!dto.bed_date) throw badRequest(`กรุณาระบุวันที่${label}`, { bed_date: 'ระบุวันที่' });
+      if (dto.bed_date < today) throw badRequest('วันที่ต้องเป็นวันนี้หรืออนาคต', { bed_date: 'เป็นวันที่ผ่านมาแล้วไม่ได้' });
+      return dto.bed_date;
+    };
     switch (dto.action) {
-      case 'CALL':
-        Object.assign(patch, { called_at: now, called_by: by.user_id, call_count: cur.call_count + 1, responded_at: null });
+      case 'CALL': {
+        const d = needDate('ที่เตียงว่าง');
+        Object.assign(patch, { called_at: now, called_by: by.user_id, call_count: cur.call_count + 1, responded_at: null, bed_date: d });
+        bits.push(`เตียงว่างวันที่ ${formatThaiDate(d)}`);
         break;
-      case 'CONFIRM':
+      }
+      case 'CONFIRM': {
+        // ยืนยันจากสถานะรอนัดวัน ต้องบันทึกวันที่ตกลงกัน · ยืนยันจากสถานะเรียกแล้วจะใส่วันใหม่เพื่อเปลี่ยนวันก็ได้
+        const d = cur.status === 'NEED_DATE' ? needDate('ที่ตกลงกัน') : dto.bed_date && dto.bed_date !== cur.bed_date ? needDate('ที่ตกลงกัน') : cur.bed_date;
+        Object.assign(patch, { responded_at: now, resolved_at: now, resolved_by: by.user_id, resolved_via: dto.via, bed_date: d });
+        if (d) bits.push(`วันที่ส่งตัว ${formatThaiDate(d)}${cur.bed_date && cur.bed_date !== d ? ` (เดิมเสนอ ${formatThaiDate(cur.bed_date)})` : ''}`);
+        // เจ้าหน้าที่บันทึกวันที่ที่ตกลงกันเอง → แจ้งผู้ขอทาง LINE ว่ายืนยันวันไหน
+        notifyConfirmed = by.user_id != null && !!d && (cur.status === 'NEED_DATE' || d !== cur.bed_date);
+        break;
+      }
+      case 'DEFER':
+        Object.assign(patch, { responded_at: now });
+        bits.push(`วันที่เสนอ ${formatThaiDate(cur.bed_date)} ไม่สะดวก — ยืนยันว่าจะส่งตัว รอเจ้าหน้าที่โทรนัดวัน`);
+        break;
       case 'DECLINE':
         Object.assign(patch, { responded_at: now, resolved_at: now, resolved_by: by.user_id, resolved_via: dto.via });
         break;
@@ -224,21 +249,25 @@ export class RequestService {
         Object.assign(patch, { resolved_at: now, resolved_by: by.user_id, resolved_via: dto.via });
         break;
       case 'REQUEUE':
-        Object.assign(patch, { called_at: null, called_by: null }); // ตำแหน่งเดิมในคิว (submitted_at ไม่เปลี่ยน)
+        Object.assign(patch, { called_at: null, called_by: null, responded_at: null, bed_date: null }); // ตำแหน่งเดิมในคิว (submitted_at ไม่เปลี่ยน)
         break;
       case 'REOPEN':
-        Object.assign(patch, { resolved_at: null, resolved_by: null, resolved_via: null, responded_at: null, called_at: null, called_by: null });
+        Object.assign(patch, { resolved_at: null, resolved_by: null, resolved_via: null, responded_at: null, called_at: null, called_by: null, bed_date: null });
         break;
     }
+    if (dto.note) bits.push(dto.note);
+    const detail = bits.length ? bits.join(' · ') : null;
 
     await this.repo.transaction(async (trx) => {
       const okUpdate = await this.repo.updateIfStatus(dto.id, rule.from, patch, trx);
       if (!okUpdate) throw conflict('มีคนเปลี่ยนสถานะคำขอนี้ไปก่อนแล้ว กรุณาโหลดหน้าใหม่');
-      await this.repo.addEvent({ request_id: dto.id, event: rule.event, from_status: cur.status, to_status: rule.to, by_user_id: by.user_id, by_label: by.label, via: dto.via, detail: dto.note }, trx);
+      await this.repo.addEvent({ request_id: dto.id, event: rule.event, from_status: cur.status, to_status: rule.to, by_user_id: by.user_id, by_label: by.label, via: dto.via, detail }, trx);
     });
     // แจ้งผู้ขอทาง LINE เฉพาะที่เจ้าหน้าที่เป็นคนทำ (ผู้ขอกดเองไม่ต้องแจ้งกลับ)
-    const kind = ({ CALL: 'CALLED', REQUEUE: 'REQUEUED', REOPEN: 'REOPENED', CANCEL: 'CANCELLED' } as const)[dto.action as 'CALL' | 'REQUEUE' | 'REOPEN' | 'CANCEL'];
-    if (kind && by.user_id != null) await this.hooks.notify?.(kind, dto.id);
+    if (by.user_id != null) {
+      const kind = notifyConfirmed ? 'CONFIRMED' : ({ CALL: 'CALLED', REQUEUE: 'REQUEUED', REOPEN: 'REOPENED', CANCEL: 'CANCELLED' } as const)[dto.action as 'CALL' | 'REQUEUE' | 'REOPEN' | 'CANCEL'];
+      if (kind) await this.hooks.notify?.(kind, dto.id, undefined, { staff_name: by.label });
+    }
     return { id: dto.id, status: rule.to };
   }
 
@@ -246,7 +275,7 @@ export class RequestService {
   async transfer(id: number, requesterId: number, actor: Actor) {
     const cur = await this.repo.findById(id);
     if (!cur) throw notFound('ไม่พบคำขอนี้');
-    if (cur.status !== 'WAITING' && cur.status !== 'CALLED') throw conflict('โอนได้เฉพาะคำขอที่ยังไม่จบ (รอคิว/เรียกแล้ว)');
+    if (!OPEN_STATUSES.includes(cur.status)) throw conflict('โอนได้เฉพาะคำขอที่ยังไม่จบ (รอคิว/เรียกแล้ว/รอนัดวัน)');
     const to = await this.repo.requesterById(requesterId);
     if (!to || to.hospital_id !== cur.hospital_id) throw badRequest('โอนได้เฉพาะผู้ขอของโรงพยาบาลเดียวกัน', { requester_id: 'ผู้ขอไม่อยู่โรงพยาบาลเดียวกัน' });
     if (to.is_blocked) throw badRequest('ผู้ขอคนนี้ถูกระงับการใช้งาน', { requester_id: 'ถูกระงับ' });
@@ -290,5 +319,3 @@ export const FIELD_LABEL: Record<string, string> = {
   note: 'หมายเหตุ',
   submitted_at: 'เวลาที่ส่งคำขอ',
 };
-
-const statusLabel = (s: Status) => ({ WAITING: 'รอคิว', CALLED: 'เรียกแล้ว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก' })[s];

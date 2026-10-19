@@ -11,6 +11,7 @@
  */
 import { badRequest, notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
+import { formatThaiDate } from '../../core/thaiDate';
 import { bangkokDate, fitWidths, ReportBook, type Cell, type ReportSheet } from '../../core/xlsxReport';
 import type { ChartSpec } from '../../core/xlsxCharts';
 import { MEASURE_LABEL, type WidgetConfig, type WidgetResult } from '../dashboard/Widget';
@@ -28,6 +29,7 @@ const NO_COLOR = '_NONE';
 const STATUS_STYLE: Record<string, { fill: string; color: string }> = {
   WAITING: { fill: 'DBEAFE', color: '1E40AF' },
   CALLED: { fill: 'FEF3C7', color: '92400E' },
+  NEED_DATE: { fill: 'FFEDD5', color: '9A3412' },
   CONFIRMED: { fill: 'DCFCE7', color: '166534' },
   DECLINED: { fill: 'E2E8F0', color: '475569' },
   CANCELLED: { fill: 'F1F5F9', color: '64748B' },
@@ -35,7 +37,7 @@ const STATUS_STYLE: Record<string, { fill: string; color: string }> = {
 const GENDER: Record<string, string> = { M: 'ชาย', F: 'หญิง', O: 'อื่น ๆ' };
 const SOURCE: Record<string, string> = { APP: 'ผู้ขอส่งเอง', ADMIN: 'เจ้าหน้าที่บันทึก', IMPORT: 'นำเข้าจาก Excel' };
 const VIA: Record<string, string> = { LINE: 'ผ่าน LINE', PHONE: 'ทางโทรศัพท์', ADMIN: 'โดยเจ้าหน้าที่', SYSTEM: 'โดยระบบ' };
-const EVENT: Record<string, string> = { SUBMITTED: 'ส่งคำขอ', CALLED: 'เรียกคิว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก', REQUEUED: 'คืนคิว', REOPENED: 'เปิดคิวใหม่', EDITED: 'แก้ไขข้อมูล', TRANSFERRED: 'โอนเคส' };
+const EVENT: Record<string, string> = { SUBMITTED: 'ส่งคำขอ', CALLED: 'เรียกคิว', CONFIRMED: 'ยืนยันส่งตัว', DECLINED: 'ไม่ยืนยัน', CANCELLED: 'ยกเลิก', DEFERRED: 'ยืนยันจะมา ขอเลื่อนวัน', REQUEUED: 'คืนคิว', REOPENED: 'เปิดคิวใหม่', EDITED: 'แก้ไขข้อมูล', TRANSFERRED: 'โอนเคส' };
 const GROUP_HEADER: Record<string, string> = { color: 'สี', substance: 'ประเภทสารเสพติด', reason: 'เหตุผลการส่งต่อ', hospital: 'โรงพยาบาล', status: 'สถานะ', gender: 'เพศ', source: 'ช่องทาง', day: 'วันที่', week: 'สัปดาห์ (เริ่มวันจันทร์)', month: 'เดือน', none: 'รายการ' };
 
 const statusText = (s: string | null) => (s ? (STATUS_LABEL[s as Status] ?? s) : null);
@@ -201,14 +203,14 @@ export class ExportService {
       'เลขคำขอ', 'สถานะ', 'ชื่อผู้ป่วย', 'เพศ', 'อายุ (ปี)', 'จังหวัด', 'เบอร์ผู้ป่วย/ญาติ', 'สี', 'ประเภทสารเสพติด', 'เหตุผลการส่งต่อ', 'หมายเหตุ',
       'รหัส รพ.', 'โรงพยาบาลต้นทาง', 'ผู้ขอ', 'เบอร์ผู้ขอ', 'เบอร์สำรองผู้ขอ', 'ช่องทางที่ส่งเข้า',
       'เวลาที่ส่งคำขอ', 'เวลาที่เรียกคิว (ล่าสุด)', 'เรียกคิวกี่ครั้ง', 'เรียกโดย', 'เวลาที่ผู้ขอตอบ', 'เวลาที่ปิดเคส', 'ได้ผลจาก', 'ปิดเคสโดย', 'หมายเหตุตอนปิดเคส',
-      'รอจากส่งถึงเรียก (วัน)', 'รอจากส่งถึงปิดเคส (วัน)', 'แก้ไขกี่ครั้ง', 'บันทึกเข้าระบบเมื่อ', 'แก้ไขล่าสุดเมื่อ',
+      'รอจากส่งถึงเรียก (วัน)', 'รอจากส่งถึงปิดเคส (วัน)', 'แก้ไขกี่ครั้ง', 'บันทึกเข้าระบบเมื่อ', 'แก้ไขล่าสุดเมื่อ', 'วันที่เตียงว่าง / วันที่ส่งตัว',
     ];
     const data: Cell[][] = rows.map((r) => [
       r.request_no ?? `#${r.id}`, statusText(r.status), r.patient_name, r.patient_gender ? (GENDER[r.patient_gender] ?? r.patient_gender) : null, r.patient_age, r.patient_province, r.patient_phone,
       c.lk('COLOR', r.color_code), c.lk('SUBSTANCE', r.substance_code), c.lk('REASON', r.reason_code), r.note,
       r.hospital_code, r.hospital_name, r.requester_name, r.requester_phone, r.requester_phone2, SOURCE[r.source] ?? r.source,
       bangkokDate(r.submitted_at), bangkokDate(r.called_at), r.call_count || null, r.called_by_name, bangkokDate(r.responded_at), bangkokDate(r.resolved_at), r.resolved_via ? (VIA[r.resolved_via] ?? r.resolved_via) : null, r.resolved_by_name, notes.get(r.id) ?? null,
-      daysBetween(r.submitted_at, r.called_at), daysBetween(r.submitted_at, r.resolved_at), edits.get(r.id) ?? null, bangkokDate(r.created_at), bangkokDate(r.updated_at),
+      daysBetween(r.submitted_at, r.called_at), daysBetween(r.submitted_at, r.resolved_at), edits.get(r.id) ?? null, bangkokDate(r.created_at), bangkokDate(r.updated_at), r.bed_date ? formatThaiDate(r.bed_date) : null,
     ]);
     const s = c.book.sheet('คำขอ', { widths: fitWidths(header, data, 9, 40), tab: '2A78D6' });
     s.banner('รายการคำขอเตียงทั้งหมด', `${c.scopeText} · ${rows.length.toLocaleString('th-TH')} รายการ · ${c.meta}`, 14);

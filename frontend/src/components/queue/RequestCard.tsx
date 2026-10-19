@@ -2,10 +2,11 @@
  * RequestCard — การ์ดคำขอบนบอร์ดคิว (แบบ Jira): ลำดับ · ผู้ป่วย · โรงพยาบาล · เวลารอ · ปุ่มทำงานเร็ว
  * กดที่ตัวการ์ดเปิดรายละเอียด · ปุ่มบนการ์ดไม่เปิดรายละเอียดซ้อน
  */
-import { Clock, TriangleAlert } from 'lucide-react';
+import { CalendarDays, Clock, TriangleAlert } from 'lucide-react';
 import type { BoardItem } from '../../api/requestApi';
 import { useLookups } from '../../hooks/useLookups';
 import { cn } from '../../lib/cn';
+import { formatDate } from '../../lib/format';
 import { Button } from '../Button';
 import { ColorChip } from '../ColorChip';
 import { fmtHours, fmtWait, GENDER_LABEL, PhoneLink } from './parts';
@@ -25,6 +26,7 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
   const pos = rank === 'all' ? r.position_all : r.position_color;
   const other = rank === 'all' ? r.position_color : r.position_all;
   const called = r.status === 'CALLED';
+  const needDate = r.status === 'NEED_DATE';
   const meta = [r.patient_gender ? GENDER_LABEL[r.patient_gender] : '', r.patient_age !== null ? `${r.patient_age} ปี` : '', r.substance_code ? lk.label('SUBSTANCE', r.substance_code) : ''].filter(Boolean).join(' · ');
 
   return (
@@ -42,6 +44,8 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
             <span className={cn('inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-xs font-bold', isNext ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground')} title={rank === 'all' ? 'ลำดับรวมทุกสี' : 'ลำดับในสีเดียวกัน'}>
               {pos}
             </span>
+          ) : needDate ? (
+            <span className="inline-flex h-6 items-center whitespace-nowrap rounded-md bg-accent-soft px-1.5 text-xs font-semibold text-accent-ink">รอนัดวัน</span>
           ) : (
             <span className="inline-flex h-6 items-center whitespace-nowrap rounded-md bg-warn-soft px-1.5 text-xs font-semibold text-warn-ink">เรียกแล้ว</span>
           )}
@@ -63,7 +67,13 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
         {r.requester_phone && <PhoneLink value={r.requester_phone} className="text-xs" />}
       </p>
 
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+      {r.bed_date && (called || needDate) && (
+        <p className={cn('mt-1.5 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium', needDate ? 'bg-accent-soft text-accent-ink' : 'bg-primary-soft text-primary-ink')}>
+          <CalendarDays className="size-3.5" aria-hidden="true" />
+          {needDate ? `วันที่เสนอ ${formatDate(r.bed_date)} ไม่สะดวก` : `เตียงว่าง ${formatDate(r.bed_date)}`}
+        </p>
+      )}
+      <div className="mt-2 flex flex-col gap-2">
         <div className="flex flex-col gap-0.5 text-xs">
           <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Clock className="size-3.5" aria-hidden="true" />
@@ -77,8 +87,9 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
               {r.overdue ? ' (เกินเวลา)' : ''}
             </span>
           )}
+          {needDate && r.deferred_hours !== null && <span className="text-accent-ink">ขอเลื่อนวันมาแล้ว {fmtHours(r.deferred_hours)} — รอโทรนัดวัน</span>}
         </div>
-        <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="grid grid-cols-2 gap-1.5 [&>button]:min-w-0 [&>button]:whitespace-nowrap [&>button:only-child]:col-span-2" onClick={(e) => e.stopPropagation()}>
           {r.status === 'WAITING' && (
             <Button size="sm" onClick={() => onAction('CALL')}>
               เรียกคิว
@@ -91,6 +102,16 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
               </Button>
               <Button size="sm" onClick={() => onAction('CONFIRM')}>
                 ยืนยัน
+              </Button>
+            </>
+          )}
+          {needDate && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onAction('DECLINE')}>
+                ไม่ยืนยัน
+              </Button>
+              <Button size="sm" onClick={() => onAction('CONFIRM')}>
+                บันทึกวันที่
               </Button>
             </>
           )}

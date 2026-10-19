@@ -17,7 +17,7 @@ import { RequestDialog } from '../../components/queue/RequestDialog';
 import { StatusChip } from '../../components/queue/parts';
 import { useLookups } from '../../hooks/useLookups';
 import { useTableData } from '../../hooks/useTableData';
-import { formatDateTime } from '../../lib/format';
+import { formatDate, formatDateTime } from '../../lib/format';
 import { MSG } from '../../lib/messages';
 
 export default function HistoryPage() {
@@ -50,6 +50,7 @@ export default function HistoryPage() {
     { header: 'ผู้ขอ', cell: (r) => r.requester_name, className: 'hidden lg:table-cell' },
     { header: 'ส่งเมื่อ', cell: (r) => formatDateTime(r.submitted_at), className: 'hidden md:table-cell whitespace-nowrap' },
     { header: 'เรียกคิวเมื่อ', cell: (r) => (r.called_at ? formatDateTime(r.called_at) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },
+    { header: 'วันที่เตียง/ส่งตัว', cell: (r) => (r.bed_date ? formatDate(r.bed_date) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },
     { header: 'ปิดเคสเมื่อ', cell: (r) => (r.resolved_at ? formatDateTime(r.resolved_at) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },
     { header: 'สถานะ', cell: (r) => <StatusChip status={r.status} /> },
   ];

@@ -4,7 +4,7 @@ import type { ChartType, Group, Measure, Split, WidgetConfig } from '../lib/widg
 
 export type DashboardSummary = {
   days: number;
-  queue: { waiting: number; called: number; overdue: number; by_color: { code: string; count: number; oldest_days: number | null }[] };
+  queue: { waiting: number; called: number; need_date: number; overdue: number; by_color: { code: string; count: number; oldest_days: number | null }[] };
   period: { submitted: number; confirmed: number; declined: number; cancelled: number; avg_days_to_confirm: number | null; min_days_to_confirm: number | null; max_days_to_confirm: number | null };
   trend: { date: string; submitted: number; confirmed: number }[];
   hospitals: { hospital_id: number; code: string; name: string; total: number; by_color: Record<string, number> }[];

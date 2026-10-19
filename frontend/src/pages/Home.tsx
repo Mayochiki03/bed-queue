@@ -154,7 +154,7 @@ export default function Home() {
         <div>
           <h1 className="text-[26px] font-bold">สวัสดี {user?.full_name}</h1>
           <p className="text-[15px] opacity-90">
-            ขณะนี้มีคิวรอ {q.waiting} ราย · เรียกแล้วรอยืนยัน {q.called} ราย
+            ขณะนี้มีคิวรอ {q.waiting} ราย · เรียกแล้วรอยืนยัน {q.called} ราย{q.need_date > 0 ? ` · รอนัดวัน ${q.need_date} ราย` : ''}
           </p>
         </div>
         <div role="group" aria-label="ช่วงเวลา" className="flex rounded-full bg-white/15 p-[3px]">

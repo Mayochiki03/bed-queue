@@ -4,6 +4,10 @@
  * ตัวตนผู้ขอ = line_user_id ที่ "ตรวจสอบแล้ว" โดยชั้นนอก (LINE LIFF ในรอบถัดไป / หน้าทดลองของ dev ที่ล็อกอินเป็น DEV)
  * Service นี้ไม่ตรวจตัวตนเอง — ผู้เรียกต้องส่ง Requester ที่ยืนยันแล้วเข้ามาเสมอ
  * (ผู้ขอที่ถูกระงับ is_blocked ทำอะไรไม่ได้)
+ *
+ * ลงทะเบียน: ต้องกรอกรหัส+ชื่อ รพ. ตรงกับรายชื่อกลาง (HospitalService.verify) แล้วสถานะเป็น PENDING รอเจ้าหน้าที่อนุมัติ
+ * ก่อนอนุมัติ: ดูโปรไฟล์ตัวเองได้ แต่ส่ง/ดู/ยกเลิก/ตอบคำขอไม่ได้ · เปลี่ยน รพ. ภายหลัง = กลับไปรออนุมัติใหม่
+ * เจ้าหน้าที่ รพ. เดียวกัน (อนุมัติแล้ว) เห็นและจัดการคำขอของ รพ. ร่วมกันทั้งหมด
  */
 import { badRequest, forbidden, notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
@@ -22,6 +26,9 @@ export type RequesterView = {
   hospital_code: string;
   hospital_name: string;
   pdpa_accepted_at: string | null;
+  /** PENDING รออนุมัติ · APPROVED ใช้งานได้ · REJECTED ไม่อนุมัติ */
+  approval_status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  decided_note: string | null;
 };
 
 export type MyRequestView = BedRequest & {
@@ -38,7 +45,7 @@ export class RequesterService {
 
   private async view(r: Requester): Promise<RequesterView> {
     const h = await this.repo.hospital(r.hospital_id);
-    return { id: r.id, full_name: r.full_name, phone: r.phone, phone2: r.phone2, hospital_id: r.hospital_id, hospital_code: h?.code ?? '', hospital_name: h?.name ?? '', pdpa_accepted_at: r.pdpa_accepted_at };
+    return { id: r.id, full_name: r.full_name, phone: r.phone, phone2: r.phone2, hospital_id: r.hospital_id, hospital_code: h?.code ?? '', hospital_name: h?.name ?? '', pdpa_accepted_at: r.pdpa_accepted_at, approval_status: r.approval_status, decided_note: r.decided_note };
   }
 
   /** โปรไฟล์ของ line_user_id นี้ (null = ยังไม่ลงทะเบียน) */
@@ -53,27 +60,51 @@ export class RequesterService {
     if (r.is_blocked) throw forbidden('บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อเจ้าหน้าที่');
   }
 
-  /** ลงทะเบียนครั้งแรก หรือแก้ไขโปรไฟล์ (ลงทะเบียนครั้งเดียว แก้ภายหลังได้) */
-  async saveProfile(lineUserId: string, displayName: string | null, dto: RequesterProfileDto): Promise<RequesterView> {
+  /**
+   * ลงทะเบียนครั้งแรก หรือแก้ไขโปรไฟล์
+   * mock = true เฉพาะผู้ขอจำลองของ dev: ไม่ตรวจกับรายชื่อ (สร้าง รพ. ให้) และอนุมัติทันที — ผู้ขอจริงผ่าน LINE ต้อง verify + รออนุมัติเสมอ
+   */
+  async saveProfile(lineUserId: string, displayName: string | null, dto: RequesterProfileDto, opts: { mock?: boolean } = {}): Promise<RequesterView> {
     const cur = await this.repo.requesterByLine(lineUserId);
     if (cur) this.assertNotBlocked(cur);
     if (!cur && !dto.accept_pdpa) throw badRequest('กรุณารับทราบเรื่องข้อมูลส่วนบุคคลก่อนลงทะเบียน', { accept_pdpa: 'ต้องรับทราบก่อน' });
 
-    // โรงพยาบาลเลือกจากรหัส 5 หลัก — หลายคนใน รพ. เดียวกันใช้แถวเดียวกัน (มีอยู่แล้วใช้ชื่อเดิมของระบบ)
-    const hospitalId = await hospitalService.findOrCreate(dto.hospital_code, dto.hospital_name);
+    const hospitalId = opts.mock ? await hospitalService.findOrCreate(dto.hospital_code, dto.hospital_name) : await hospitalService.verify(dto.hospital_code, dto.hospital_name);
     const fields = { full_name: dto.full_name, phone: dto.phone, phone2: dto.phone2, hospital_id: hospitalId, display_name: displayName, last_seen_at: new Date().toISOString() };
     if (cur) {
-      await this.repo.updateRequester(cur.id, { ...fields, ...(cur.pdpa_accepted_at || !dto.accept_pdpa ? {} : { pdpa_accepted_at: new Date().toISOString() }) });
+      // เปลี่ยนโรงพยาบาล = ต้องให้เจ้าหน้าที่อนุมัติใหม่ (กันย้ายไปดูคำขอของ รพ. อื่นเอง)
+      const moved = hospitalId !== cur.hospital_id && !opts.mock;
+      await this.repo.updateRequester(cur.id, {
+        ...fields,
+        ...(cur.pdpa_accepted_at || !dto.accept_pdpa ? {} : { pdpa_accepted_at: new Date().toISOString() }),
+        ...(moved ? { approval_status: 'PENDING', decided_by: null, decided_at: null, decided_note: null } : {}),
+      });
       return this.view((await this.repo.requesterById(cur.id))!);
     }
-    const id = await this.repo.insertRequester({ line_user_id: lineUserId, display_name: displayName, full_name: dto.full_name, phone: dto.phone, phone2: dto.phone2, hospital_id: hospitalId, pdpa_accepted_at: new Date().toISOString() });
+    const id = await this.repo.insertRequester({
+      line_user_id: lineUserId,
+      display_name: displayName,
+      full_name: dto.full_name,
+      phone: dto.phone,
+      phone2: dto.phone2,
+      hospital_id: hospitalId,
+      pdpa_accepted_at: new Date().toISOString(),
+      approval_status: opts.mock ? 'APPROVED' : 'PENDING',
+    });
     return this.view((await this.repo.requesterById(id))!);
+  }
+
+  /** ค้นชื่อ รพ. จากรหัส (หน้าลงทะเบียนเรียกเพื่อเติมชื่อให้) */
+  hospitalCheck(code: string) {
+    return hospitalService.lookupByCode(code);
   }
 
   private async mustBe(lineUserId: string): Promise<Requester> {
     const r = await this.repo.requesterByLine(lineUserId);
     if (!r) throw badRequest('ยังไม่ได้ลงทะเบียน กรุณากรอกข้อมูลผู้ขอก่อน');
     this.assertNotBlocked(r);
+    if (r.approval_status === 'PENDING') throw forbidden('บัญชีของคุณรอเจ้าหน้าที่อนุมัติ — เมื่ออนุมัติแล้วจะใช้งานได้ทันที');
+    if (r.approval_status === 'REJECTED') throw forbidden(`บัญชีของคุณไม่ได้รับการอนุมัติ${r.decided_note ? ` (${r.decided_note})` : ''} — กรุณาติดต่อเจ้าหน้าที่`);
     if (!r.pdpa_accepted_at) throw forbidden('กรุณารับทราบนโยบายข้อมูลส่วนบุคคลก่อนใช้งาน');
     return r;
   }
@@ -120,10 +151,10 @@ export class RequesterService {
     return { id, request_no: `BQ${String(id).padStart(6, '0')}` };
   }
 
-  /** คำขอของผู้ขอคนนี้ พร้อมลำดับคิว (ตามตั้งค่า queue_display) */
+  /** คำขอของโรงพยาบาลของผู้ขอคนนี้ (ทุกคนใน รพ. เดียวกันเห็นร่วมกัน) พร้อมลำดับคิว (ตามตั้งค่า queue_display) */
   async mine(lineUserId: string): Promise<MyRequestView[]> {
     const r = await this.mustBe(lineUserId);
-    const [rows, display] = await Promise.all([this.repo.byRequester(r.id), getSetting('queue_display')]);
+    const [rows, display] = await Promise.all([this.repo.byHospital(r.hospital_id), getSetting('queue_display')]);
     const pos = await this.requests.positionsOf(rows.filter((x) => x.status === 'WAITING').map((x) => x.id));
     return rows.map((x) => {
       const p = pos.get(x.id);
@@ -134,7 +165,7 @@ export class RequesterService {
   private async ownRequest(lineUserId: string, id: number) {
     const r = await this.mustBe(lineUserId);
     const row = await this.repo.findById(id);
-    if (!row || row.requester_id !== r.id) throw notFound('ไม่พบคำขอนี้');
+    if (!row || row.hospital_id !== r.hospital_id) throw notFound('ไม่พบคำขอนี้'); // เจ้าหน้าที่ รพ. เดียวกันจัดการแทนกันได้
     return { r, row };
   }
 
@@ -143,9 +174,9 @@ export class RequesterService {
     return this.requests.transition({ id, action: 'CANCEL', via: 'LINE', note: 'ผู้ขอยกเลิกเอง' }, { user_id: null, label: r.full_name });
   }
 
-  /** ผู้ขอตอบ "ยืนยัน/ไม่ยืนยัน" หลังถูกเรียกคิว (กดจากการ์ดใน LINE) */
-  async respond(lineUserId: string, id: number, accept: boolean) {
+  /** ผู้ขอตอบหลังถูกเรียกคิว (กดจากการ์ดใน LINE หรือหน้าผู้ขอ): CONFIRM ยืนยัน · DEFER ยืนยันจะส่งแต่วันที่แจ้งไม่สะดวก · DECLINE ไม่ยืนยัน */
+  async respond(lineUserId: string, id: number, answer: 'CONFIRM' | 'DEFER' | 'DECLINE') {
     const { r } = await this.ownRequest(lineUserId, id);
-    return this.requests.transition({ id, action: accept ? 'CONFIRM' : 'DECLINE', via: 'LINE', }, { user_id: null, label: r.full_name });
+    return this.requests.transition({ id, action: answer, via: 'LINE' }, { user_id: null, label: r.full_name });
   }
 }

@@ -2,6 +2,7 @@
  * WidgetRepository.ts — ตาราง dashboard_widget + ดึงแถวคำขอ/ข้อมูลหลักที่ widget ต้องใช้
  */
 import { db, insertGetId, nowIso } from '../../core/db';
+import { OPEN_STATUSES } from '../request/Request';
 import type { Dim, EngineRow } from './WidgetEngine';
 import type { Measure, WidgetConfig, WidgetRecord } from './Widget';
 
@@ -124,7 +125,7 @@ export class WidgetRepository {
   /** คำขอที่เกี่ยวกับช่วงเวลา (ส่งเข้า/ปิดเคสตั้งแต่ since) + คิวที่ยังเปิดอยู่ทั้งหมด */
   rowsSince(sinceIso: string): Promise<EngineRow[]> {
     return db('bed_request')
-      .where((b) => b.where('submitted_at', '>=', sinceIso).orWhere('resolved_at', '>=', sinceIso).orWhereIn('status', ['WAITING', 'CALLED']))
+      .where((b) => b.where('submitted_at', '>=', sinceIso).orWhere('resolved_at', '>=', sinceIso).orWhereIn('status', OPEN_STATUSES))
       .select(ENGINE_COLS);
   }
 

@@ -30,13 +30,36 @@ export class HospitalRepository {
     return db('hospital').where({ code }).first();
   }
 
-  async insert(d: { code: string; name: string; is_active: 'Y' | 'N' }): Promise<number> {
-    const now = nowIso();
-    return insertGetId(db, 'hospital', { code: d.code, name: d.name, is_active: d.is_active === 'Y', created_at: now, updated_at: now });
+  /** ทุกแถว (ใช้ตอนนำเข้า Excel เทียบรหัส + ดาวน์โหลดรายชื่อ) */
+  all(): Promise<Hospital[]> {
+    return db('hospital').select('*').orderBy('code');
   }
 
-  async update(id: number, d: { code: string; name: string; is_active: 'Y' | 'N' }): Promise<void> {
-    await db('hospital').where({ id }).update({ code: d.code, name: d.name, is_active: d.is_active === 'Y', updated_at: nowIso() });
+  async insert(d: { code: string; name: string; health_region?: number | null; is_active: 'Y' | 'N' }): Promise<number> {
+    const now = nowIso();
+    return insertGetId(db, 'hospital', { code: d.code, name: d.name, health_region: d.health_region ?? null, is_active: d.is_active === 'Y', created_at: now, updated_at: now });
+  }
+
+  async update(id: number, d: { code: string; name: string; health_region?: number | null; is_active: 'Y' | 'N' }): Promise<void> {
+    await db('hospital')
+      .where({ id })
+      .update({ code: d.code, name: d.name, health_region: d.health_region ?? null, is_active: d.is_active === 'Y', updated_at: nowIso() });
+  }
+
+  /** นำเข้าหลายแถวในธุรกรรมเดียว (ล้มกลางทาง = ไม่เปลี่ยนอะไรเลย) — เพิ่มใหม่หรืออัปเดตตามรหัส */
+  async upsertMany(rows: { id: number | null; code: string; name: string; health_region: number | null; is_active: boolean }[]): Promise<void> {
+    const now = nowIso();
+    await db.transaction(async (trx) => {
+      for (const r of rows) {
+        if (r.id) await trx('hospital').where({ id: r.id }).update({ name: r.name, health_region: r.health_region, is_active: r.is_active, updated_at: now });
+        else await insertGetId(trx, 'hospital', { code: r.code, name: r.name, health_region: r.health_region, is_active: r.is_active, created_at: now, updated_at: now });
+      }
+    });
+  }
+
+  /** บันทึกประวัติการนำเข้า (ตาราง import_batch) */
+  async addImportBatch(d: { filename: string; total_rows: number; imported: number; skipped: number; created_by: number | null }): Promise<void> {
+    await db('import_batch').insert({ ...d, created_at: nowIso() });
   }
 
   async delete(id: number): Promise<void> {

@@ -52,6 +52,7 @@ export type EngineContext = {
 const STATUS_DIMS: Dim[] = [
   { key: 'WAITING', label: 'รอคิว', color: null, active: true },
   { key: 'CALLED', label: 'เรียกแล้ว', color: null, active: true },
+  { key: 'NEED_DATE', label: 'ยืนยันจะมา รอนัดวัน', color: null, active: true },
   { key: 'CONFIRMED', label: 'ยืนยันส่งตัว', color: null, active: true },
   { key: 'DECLINED', label: 'ไม่ยืนยัน', color: null, active: true },
   { key: 'CANCELLED', label: 'ยกเลิก', color: null, active: true },

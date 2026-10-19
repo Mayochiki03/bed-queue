@@ -14,6 +14,7 @@ import DevPage from '../pages/dev/DevPage';
 import HistoryPage from '../pages/history/HistoryPage';
 import Home from '../pages/Home';
 import LogPage from '../pages/log/LogPage';
+import MemberPage from '../pages/member/MemberPage';
 import LookupPage from '../pages/lookup/LookupPage';
 import NotificationPage from '../pages/notification/NotificationPage';
 import QueuePage from '../pages/queue/QueuePage';
@@ -29,6 +30,7 @@ export const routes: AppRoute[] = [
 
   { path: '/queue/*', element: <QueuePage /> }, // บอร์ดคิว + เพิ่ม/แก้คำขอ
   { path: '/history/*', element: <HistoryPage /> }, // ประวัติ/ค้นหาคำขอ
+  { path: '/member/*', element: <MemberPage /> }, // สมาชิก รพ.: อนุมัติผู้ที่ลงทะเบียนผ่าน LINE
 
   { path: '/hospital/*', element: <HospitalPage />, minRole: 'ADMIN' },
   { path: '/lookup/*', element: <LookupPage />, minRole: 'ADMIN' },

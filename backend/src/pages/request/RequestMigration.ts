@@ -7,7 +7,7 @@
  *   import_batch       ประวัติการนำเข้า Excel
  *   line_message_log   บันทึกการส่งข้อความ LINE (ใช้นับโควตา/ดูว่าส่งไม่ออกเพราะอะไร)
  *
- * status ของคำขอ: WAITING รอคิว · CALLED เรียกแล้วรอยืนยัน · CONFIRMED ยืนยันส่งตัว
+ * status ของคำขอ: WAITING รอคิว · CALLED เรียกแล้วรอยืนยัน · NEED_DATE ยืนยันจะมาแต่ยังหาวันไม่ได้ · CONFIRMED ยืนยันส่งตัว
  *                 DECLINED ไม่ยืนยัน · CANCELLED ยกเลิก
  * (เก็บเป็นข้อความ ตรวจที่ DTO/Service — ไม่ใช้ ENUM เพื่อให้ย้ายฐานข้อมูลได้)
  */
@@ -174,6 +174,41 @@ export const requestMigrations: Migration[] = [
     async down(db) {
       await db.schema.alterTable('request_event', (t) => {
         t.dropColumn('changes');
+      });
+    },
+  },
+  {
+    name: '20261016_32_bed_date',
+    async up(db) {
+      // วันที่เตียงว่างรับ (YYYY-MM-DD เวลาไทย) — เสนอตอนเรียกคิว แล้วเป็นวันที่ตกลงกันตอนยืนยัน
+      await db.schema.alterTable('bed_request', (t) => {
+        t.string('bed_date', 10).nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.alterTable('bed_request', (t) => {
+        t.dropColumn('bed_date');
+      });
+    },
+  },
+  {
+    // สมาชิกใหม่ต้องรอเจ้าหน้าที่อนุมัติก่อนเห็น/ส่งคำขอ (กันคนนอกที่รู้รหัส รพ.) — แถวเดิมถือว่าอนุมัติแล้ว
+    // approval_status: PENDING รออนุมัติ · APPROVED อนุมัติแล้ว · REJECTED ไม่อนุมัติ (เก็บเป็นข้อความ ไม่ใช้ ENUM)
+    name: '20261019_41_requester_approval',
+    async up(db) {
+      await db.schema.alterTable('requester', (t) => {
+        t.string('approval_status', 10).notNullable().defaultTo('APPROVED');
+        t.integer('decided_by').nullable();
+        t.string('decided_at', 30).nullable();
+        t.string('decided_note', 200).nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.alterTable('requester', (t) => {
+        t.dropColumn('approval_status');
+        t.dropColumn('decided_by');
+        t.dropColumn('decided_at');
+        t.dropColumn('decided_note');
       });
     },
   },

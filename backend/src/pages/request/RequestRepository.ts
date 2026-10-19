@@ -5,12 +5,12 @@
 import type { Knex } from 'knex';
 import { db, insertGetId, nowIso, orWhereContains, whereContains } from '../../core/db';
 import { paginate, type PageResult, type Paging } from '../../core/http';
-import type { BedRequest, RequestEvent, Requester, Status } from './Request';
+import { OPEN_STATUSES, type BedRequest, type RequestEvent, type Requester, type Status } from './Request';
 import type { RequestSearchDto } from './RequestDto';
 
 type Executor = Knex | Knex.Transaction;
 
-export type BedRequestInsert = Omit<BedRequest, 'id' | 'request_no' | 'created_at' | 'updated_at' | 'called_at' | 'called_by' | 'call_count' | 'responded_at' | 'resolved_at' | 'resolved_by' | 'resolved_via'>;
+export type BedRequestInsert = Omit<BedRequest, 'id' | 'request_no' | 'created_at' | 'updated_at' | 'called_at' | 'called_by' | 'bed_date' | 'call_count' | 'responded_at' | 'resolved_at' | 'resolved_by' | 'resolved_via'>;
 
 /** แปลงค่า boolean ของ MariaDB (0/1) ในแถวผู้ขอ */
 const toRequester = (r: Requester & { is_blocked: number | boolean }): Requester => ({ ...r, is_blocked: !!r.is_blocked });
@@ -48,19 +48,20 @@ export class RequestRepository {
     return x('bed_request').where({ id }).first();
   }
 
-  /** คำขอที่ยังเปิดอยู่ (รอ/เรียกแล้ว) พร้อมชื่อ/รหัสโรงพยาบาล — เรียงตามเวลาที่ส่ง */
+  /** คำขอที่ยังเปิดอยู่ (รอ/เรียกแล้ว/รอนัดวัน) พร้อมชื่อ/รหัสโรงพยาบาล — เรียงตามเวลาที่ส่ง */
   openWithHospital(): Promise<(BedRequest & { hospital_code: string; hospital_name: string })[]> {
     return db('bed_request as r')
       .join('hospital as h', 'h.id', 'r.hospital_id')
-      .whereIn('r.status', ['WAITING', 'CALLED'])
+      .whereIn('r.status', OPEN_STATUSES)
       .select('r.*', 'h.code as hospital_code', 'h.name as hospital_name')
       .orderBy('r.submitted_at')
       .orderBy('r.id');
   }
 
   /** คำขอของผู้ขอคนหนึ่ง (ล่าสุดก่อน) */
-  byRequester(requesterId: number, limit = 100): Promise<BedRequest[]> {
-    return db('bed_request').where({ requester_id: requesterId }).orderBy('submitted_at', 'desc').orderBy('id', 'desc').limit(limit);
+  /** คำขอทั้งหมดของโรงพยาบาลนี้ (เจ้าหน้าที่ รพ. เดียวกันเห็นผู้ป่วยของ รพ. ร่วมกัน) */
+  byHospital(hospitalId: number, limit = 100): Promise<BedRequest[]> {
+    return db('bed_request').where({ hospital_id: hospitalId }).orderBy('submitted_at', 'desc').orderBy('id', 'desc').limit(limit);
   }
 
   /** คิวที่รออยู่ทั้งหมด (ใช้คำนวณลำดับ) — เรียงตามเวลาที่ส่ง */
@@ -70,7 +71,7 @@ export class RequestRepository {
 
   /** ผู้ป่วยชื่อเดียวกันของ รพ. เดียวกันที่ยังมีคำขอเปิดอยู่ (กันส่งซ้ำ/กดซ้ำ) */
   findOpenDuplicate(hospitalId: number, patientName: string, exceptId?: number): Promise<BedRequest | undefined> {
-    const q = db('bed_request').where({ hospital_id: hospitalId }).whereIn('status', ['WAITING', 'CALLED']);
+    const q = db('bed_request').where({ hospital_id: hospitalId }).whereIn('status', OPEN_STATUSES);
     whereContains(q, 'patient_name', patientName); // ใช้ contains แล้วเทียบแบบตรงตัวในชั้น Service
     if (exceptId) q.whereNot({ id: exceptId });
     return q.first();
@@ -154,9 +155,10 @@ export class RequestRepository {
     return ((await db('requester').where({ hospital_id: hospitalId }).orderBy('full_name')) as Requester[]).map(toRequester);
   }
 
-  insertRequester(r: { line_user_id: string | null; display_name: string | null; full_name: string; phone: string; phone2: string | null; hospital_id: number; pdpa_accepted_at: string | null }): Promise<number> {
+  /** approval_status: สมัครเองผ่าน LINE = PENDING (ต้องรออนุมัติ) · ผู้ขอจำลอง/ข้อมูลทดสอบ = APPROVED */
+  insertRequester(r: { line_user_id: string | null; display_name: string | null; full_name: string; phone: string; phone2: string | null; hospital_id: number; pdpa_accepted_at: string | null; approval_status?: 'PENDING' | 'APPROVED' }): Promise<number> {
     const now = nowIso();
-    return insertGetId(db, 'requester', { ...r, is_blocked: false, last_seen_at: now, created_at: now, updated_at: now });
+    return insertGetId(db, 'requester', { approval_status: 'APPROVED', ...r, is_blocked: false, last_seen_at: now, created_at: now, updated_at: now });
   }
 
   updateRequester(id: number, patch: Record<string, unknown>) {

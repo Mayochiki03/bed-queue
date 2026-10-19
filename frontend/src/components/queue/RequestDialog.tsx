@@ -1,15 +1,15 @@
 /**
- * RequestDialog — รายละเอียดคำขอ + ปุ่มดำเนินการ (เรียกคิว / บันทึกผล / คืนคิว / ยกเลิก / เปิดใหม่ / โอนเคส / แก้ไข) + ประวัติทุกเหตุการณ์
+ * RequestDialog — รายละเอียดคำขอ + ปุ่มดำเนินการ (เรียกคิวพร้อมวันที่เตียงว่าง / ยืนยัน / ขอเลื่อนวัน / บันทึกวันที่ตกลง / ไม่ยืนยัน / คืนคิว / ยกเลิก / เปิดใหม่ / โอนเคส / แก้ไข) + ประวัติทุกเหตุการณ์
  * ใช้ทั้งในบอร์ดคิวและหน้าประวัติ · initialAction = เปิดมาที่ฟอร์มบันทึกผลทันที (กดมาจากปุ่มบนการ์ด)
  * ทุกการเปลี่ยนสถานะมี popup ยืนยันก่อน · ถ้ามีคนเปลี่ยนสถานะไปก่อน ระบบแจ้งและโหลดข้อมูลใหม่ให้
  */
-import { ArrowRightLeft, Pencil } from 'lucide-react';
+import { ArrowRightLeft, CalendarDays, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { requestApi, type Action, type RequestDetail, type RequesterOption, type Via } from '../../api/requestApi';
+import { OPEN_STATUSES, requestApi, type Action, type RequestDetail, type RequesterOption, type Via } from '../../api/requestApi';
 import { useLookups } from '../../hooks/useLookups';
 import { cn } from '../../lib/cn';
-import { formatDateTime } from '../../lib/format';
+import { formatDate, formatDateTime, todayThai } from '../../lib/format';
 import { Button } from '../Button';
 import { ColorChip } from '../ColorChip';
 import { Modal } from '../Modal';
@@ -17,8 +17,9 @@ import { usePopup } from '../Popup';
 import { Spinner } from '../Spinner';
 import { EVENT_LABEL, fmtHours, fmtWait, GENDER_LABEL, PhoneLink, StatusChip, VIA_LABEL } from './parts';
 
-const ACTION_LABEL: Record<Action, string> = { CALL: 'เรียกคิว', CONFIRM: 'ยืนยันส่งตัว', DECLINE: 'ไม่ยืนยัน', CANCEL: 'ยกเลิกคำขอ', REQUEUE: 'คืนคิว', REOPEN: 'เปิดคิวใหม่' };
-const OUTCOME: Action[] = ['CONFIRM', 'DECLINE', 'CANCEL'];
+const ACTION_LABEL: Record<Action, string> = { CALL: 'เรียกคิว', CONFIRM: 'ยืนยันส่งตัว', DEFER: 'ยืนยันจะมา ขอเลื่อนวัน', DECLINE: 'ไม่ยืนยัน', CANCEL: 'ยกเลิกคำขอ', REQUEUE: 'คืนคิว', REOPEN: 'เปิดคิวใหม่' };
+/** การกระทำที่ต้องกรอกฟอร์มก่อน (วันที่ / ช่องทาง / หมายเหตุ) */
+const OUTCOME: Action[] = ['CALL', 'CONFIRM', 'DEFER', 'DECLINE', 'CANCEL'];
 const inputClass = 'w-full rounded-md border border-border bg-card px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
 
 type Props = { id: number; initialAction?: Action; onClose: () => void; onChanged: () => void };
@@ -47,7 +48,8 @@ function Times({ d }: { d: RequestDetail }) {
   if (Math.abs(new Date(d.created_at).getTime() - new Date(d.submitted_at).getTime()) > 120_000) rows.push({ label: 'บันทึกเข้าระบบเมื่อ', value: formatDateTime(d.created_at) });
   if (firstCall) rows.push({ label: 'เรียกคิวครั้งแรก', value: <>{formatDateTime(firstCall)} <span className="text-muted-foreground">(รอ {dayDiff(d.submitted_at, firstCall)} นับจากส่งคำขอ)</span></> });
   if (d.called_at) rows.push({ label: 'เรียกคิวล่าสุด', value: <>{formatDateTime(d.called_at)}{d.called_by_name ? ` · โดย ${d.called_by_name}` : ''} <span className="text-muted-foreground">(เรียกแล้ว {d.call_count} ครั้ง)</span></> });
-  if (d.responded_at) rows.push({ label: 'ผู้ขอตอบเมื่อ', value: formatDateTime(d.responded_at) });
+  if (d.bed_date) rows.push({ label: d.status === 'CONFIRMED' ? 'วันที่ส่งตัว (ตกลงแล้ว)' : 'วันที่เตียงว่างที่เสนอ', value: formatDate(d.bed_date) });
+  if (d.responded_at) rows.push({ label: d.status === 'NEED_DATE' ? 'ผู้ขอแจ้งขอเลื่อนวันเมื่อ' : 'ผู้ขอตอบเมื่อ', value: formatDateTime(d.responded_at) });
   if (d.resolved_at) {
     rows.push({
       label: d.status === 'CONFIRMED' ? 'ยืนยันส่งตัวเมื่อ' : d.status === 'DECLINED' ? 'ไม่ยืนยันเมื่อ' : 'ปิดเคสเมื่อ',
@@ -114,6 +116,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
   const [outcome, setOutcome] = useState<Action | null>(initialAction && OUTCOME.includes(initialAction) ? initialAction : null);
   const [via, setVia] = useState<Via>('PHONE');
   const [note, setNote] = useState('');
+  const [bedDate, setBedDate] = useState('');
   const [busy, setBusy] = useState(false);
   const [transfer, setTransfer] = useState<RequesterOption[] | null>(null);
   const [transferTo, setTransferTo] = useState('');
@@ -131,9 +134,11 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
     void load();
   }, [load]);
 
-  // เปิดมาจากปุ่มบนการ์ดที่ไม่ต้องกรอกอะไร (เรียกคิว/คืนคิว/เปิดใหม่) → ถามยืนยันทันที
+  // เปิดมาจากปุ่มบนการ์ดที่ไม่ต้องกรอกอะไร (คืนคิว/เปิดใหม่) → ถามยืนยันทันที · ที่ต้องกรอกวันที่ (เรียกคิว/ยืนยัน) ตั้งค่าเริ่มต้นของฟอร์ม
   useEffect(() => {
-    if (d && (initialAction === 'CALL' || initialAction === 'REQUEUE' || initialAction === 'REOPEN')) void runSimple(initialAction);
+    if (!d) return;
+    if (initialAction === 'REQUEUE' || initialAction === 'REOPEN') void runSimple(initialAction);
+    else if (initialAction && OUTCOME.includes(initialAction)) openForm(initialAction, d);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d?.id]);
 
@@ -151,13 +156,19 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
     }
   }
 
-  /** เรียกคิว / คืนคิว / เปิดคิวใหม่ — ถามยืนยันแล้วทำเลย (ไม่ต้องกรอกอะไรเพิ่ม) */
-  async function runSimple(a: 'CALL' | 'REQUEUE' | 'REOPEN') {
+  /** เปิดฟอร์มของการกระทำที่ต้องกรอก: เรียกคิว = เลือกวันที่เตียงว่าง · ยืนยัน = วันที่ส่งตัว (ค่าเริ่มต้น = วันที่ที่เสนอไว้ ยกเว้นสถานะรอนัดวันที่ต้องตกลงใหม่) */
+  function openForm(a: Action, cur: RequestDetail = d!) {
+    setNote('');
+    setVia(a === 'CALL' ? 'ADMIN' : 'PHONE');
+    setBedDate(a === 'CALL' ? '' : a === 'CONFIRM' && cur.status === 'CALLED' && cur.bed_date ? cur.bed_date : '');
+    setOutcome(a);
+  }
+
+  /** คืนคิว / เปิดคิวใหม่ — ถามยืนยันแล้วทำเลย (ไม่ต้องกรอกอะไรเพิ่ม) */
+  async function runSimple(a: 'REQUEUE' | 'REOPEN') {
     if (!d) return;
     const who = `${d.patient_name} (${d.hospital_name})`;
-    const phones = [d.requester_phone, d.requester_phone2].filter(Boolean).join(' / ');
     const message = {
-      CALL: `เรียกคิว: ${who}\n\nหลังกดยืนยัน โปรดโทรแจ้งผู้ขอ ${d.requester_name}${phones ? `\nเบอร์ ${phones}` : ''}\n(ระบบยังไม่ส่งข้อความ LINE อัตโนมัติ)`,
       REQUEUE: `คืนคิว: ${who}\nคำขอจะกลับไปรอคิวที่ตำแหน่งเดิม (นับจากเวลาที่ส่งคำขอ)`,
       REOPEN: `เปิดคิวใหม่: ${who}\nคำขอจะกลับไปรอคิวที่ตำแหน่งเดิม (นับจากเวลาที่ส่งคำขอ)`,
     }[a];
@@ -167,14 +178,25 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
     }
     setBusy(true);
     const res = await requestApi.transition(d.id, a, { via: 'ADMIN' }).finally(() => setBusy(false));
-    await finish(res, a === 'CALL' ? `บันทึกการเรียกคิวแล้ว\nโปรดโทรแจ้ง ${d.requester_name}${phones ? ` (${phones})` : ''}` : `${ACTION_LABEL[a]}แล้ว`);
+    await finish(res, `${ACTION_LABEL[a]}แล้ว`);
   }
 
   async function submitOutcome() {
     if (!d || !outcome) return;
+    const needsDate = outcome === 'CALL' || (outcome === 'CONFIRM' && d.status === 'NEED_DATE');
+    if (needsDate && !bedDate) return popup.error(outcome === 'CALL' ? 'กรุณาเลือกวันที่เตียงว่าง' : 'กรุณาเลือกวันที่ที่ตกลงกัน');
+    const phones = [d.requester_phone, d.requester_phone2].filter(Boolean).join(' / ');
     setBusy(true);
-    const res = await requestApi.transition(d.id, outcome, { via, note: note.trim() || undefined }).finally(() => setBusy(false));
-    await finish(res, `${ACTION_LABEL[outcome]}แล้ว`);
+    const res = await requestApi
+      .transition(d.id, outcome, { via: outcome === 'CALL' ? 'ADMIN' : via, note: note.trim() || undefined, ...(outcome === 'CALL' || outcome === 'CONFIRM' ? { bed_date: bedDate || undefined } : {}) })
+      .finally(() => setBusy(false));
+    const doneMessage =
+      outcome === 'CALL'
+        ? `เรียกคิวแล้ว (เตียงว่าง ${formatDate(bedDate)})\nระบบส่งการ์ดทาง LINE ให้ผู้ขอแล้ว (ถ้าผู้ขอใช้ LINE) — ควรโทรแจ้ง ${d.requester_name}${phones ? ` (${phones})` : ''} ด้วย`
+        : outcome === 'CONFIRM' && bedDate && (d.status === 'NEED_DATE' || bedDate !== d.bed_date)
+          ? `บันทึกวันที่ส่งตัว ${formatDate(bedDate)} แล้ว\nระบบแจ้งผู้ขอทาง LINE พร้อมชื่อของคุณ`
+          : `${ACTION_LABEL[outcome]}แล้ว`;
+    await finish(res, doneMessage);
   }
 
   async function openTransfer() {
@@ -199,7 +221,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
     } else popup.error(res.message);
   }
 
-  const open = d?.status === 'WAITING' || d?.status === 'CALLED';
+  const open = !!d && OPEN_STATUSES.includes(d.status);
   const footer = d && !outcome && !transfer && (
     <>
       <Button variant="outline" onClick={() => navigate('/queue/edit', { state: { id: d.id } })}>
@@ -214,33 +236,51 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
       )}
       {d.status === 'WAITING' && (
         <>
-          <Button variant="outline" className="text-danger" onClick={() => setOutcome('CANCEL')}>
+          <Button variant="outline" className="text-danger" onClick={() => openForm('CANCEL')}>
             ยกเลิกคำขอ
           </Button>
-          <Button loading={busy} onClick={() => void runSimple('CALL')}>
-            เรียกคิว
-          </Button>
+          <Button onClick={() => openForm('CALL')}>เรียกคิว</Button>
         </>
       )}
       {d.status === 'CALLED' && (
         <>
-          <Button variant="outline" className="text-danger" onClick={() => setOutcome('CANCEL')}>
+          <Button variant="outline" className="text-danger" onClick={() => openForm('CANCEL')}>
             ยกเลิกคำขอ
           </Button>
           <Button variant="outline" onClick={() => void runSimple('REQUEUE')}>
             คืนคิว
           </Button>
-          <Button variant="outline" onClick={() => void runSimple('CALL')}>
-            เรียกซ้ำ
+          <Button variant="outline" onClick={() => openForm('CALL')}>
+            เรียกซ้ำ / เปลี่ยนวัน
           </Button>
-          <Button variant="outline" onClick={() => setOutcome('DECLINE')}>
+          <Button variant="outline" onClick={() => openForm('DECLINE')}>
             ไม่ยืนยัน
           </Button>
-          <Button onClick={() => setOutcome('CONFIRM')}>ยืนยันส่งตัว</Button>
+          <Button variant="outline" onClick={() => openForm('DEFER')}>
+            ยืนยันแต่ขอเลื่อนวัน
+          </Button>
+          <Button onClick={() => openForm('CONFIRM')}>ยืนยันส่งตัว</Button>
+        </>
+      )}
+      {d.status === 'NEED_DATE' && (
+        <>
+          <Button variant="outline" className="text-danger" onClick={() => openForm('CANCEL')}>
+            ยกเลิกคำขอ
+          </Button>
+          <Button variant="outline" onClick={() => void runSimple('REQUEUE')}>
+            คืนคิว
+          </Button>
+          <Button variant="outline" onClick={() => openForm('CALL')}>
+            เสนอวันใหม่ผ่าน LINE
+          </Button>
+          <Button variant="outline" onClick={() => openForm('DECLINE')}>
+            ไม่ยืนยัน
+          </Button>
+          <Button onClick={() => openForm('CONFIRM')}>บันทึกวันที่ตกลง</Button>
         </>
       )}
       {d.status === 'CONFIRMED' && (
-        <Button variant="outline" className="text-danger" onClick={() => setOutcome('CANCEL')}>
+        <Button variant="outline" className="text-danger" onClick={() => openForm('CANCEL')}>
           ยกเลิกคำขอ
         </Button>
       )}
@@ -274,7 +314,25 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
           {/* ฟอร์มบันทึกผล */}
           {outcome && (
             <section className="rounded-lg border border-primary/30 bg-primary-soft/50 p-4">
-              <h3 className="mb-3 font-semibold text-foreground">{ACTION_LABEL[outcome]}</h3>
+              <h3 className="mb-3 font-semibold text-foreground">{outcome === 'CONFIRM' && d.status === 'NEED_DATE' ? 'บันทึกวันที่ตกลงกัน (ยืนยันส่งตัว)' : outcome === 'CALL' && d.status !== 'WAITING' ? 'เรียกคิวอีกครั้ง (เสนอวันที่เตียงว่าง)' : ACTION_LABEL[outcome]}</h3>
+              {(outcome === 'CALL' || outcome === 'CONFIRM') && (
+                <div className="mb-3">
+                  <label htmlFor="bed-date" className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+                    <CalendarDays className="size-4" aria-hidden="true" />
+                    {outcome === 'CALL' ? 'วันที่เตียงโรงพยาบาลเราว่างรับ' : d.status === 'NEED_DATE' ? 'วันที่ตกลงกับผู้ขอแล้ว' : 'วันที่ส่งตัว'}
+                    {(outcome === 'CALL' || d.status === 'NEED_DATE') && <span className="text-danger"> *</span>}
+                  </label>
+                  <input id="bed-date" type="date" min={todayThai()} className={cn(inputClass, 'sm:max-w-[14rem]')} value={bedDate} onChange={(e) => setBedDate(e.target.value)} />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {outcome === 'CALL'
+                      ? 'ระบบแนบวันที่นี้ในการ์ด LINE ที่ส่งให้ผู้ขอ — ผู้ขอจะกด "ยืนยันตามวันที่แจ้ง" หรือ "ส่งได้ ขอเลื่อนวัน" ได้'
+                      : d.status === 'NEED_DATE'
+                        ? 'หลังบันทึก ระบบจะส่งข้อความยืนยันทาง LINE ให้ผู้ขอ ระบุวันที่นี้และชื่อของคุณ'
+                        : 'เว้นไว้ = ใช้วันที่ที่เสนอไป · เปลี่ยนวันที่จะแจ้งผู้ขอทาง LINE ด้วย'}
+                  </p>
+                </div>
+              )}
+              {outcome !== 'CALL' && (
               <fieldset className="mb-3">
                 <legend className="mb-1 text-sm font-medium">ได้ผลจาก</legend>
                 <div className="flex flex-wrap gap-4 text-sm">
@@ -291,6 +349,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                   ))}
                 </div>
               </fieldset>
+              )}
               <label className="mb-1 block text-sm font-medium" htmlFor="outcome-note">
                 หมายเหตุ (ไม่บังคับ)
               </label>
@@ -300,7 +359,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                   กลับ
                 </Button>
                 <Button variant={outcome === 'CANCEL' ? 'danger' : 'primary'} loading={busy} onClick={() => void submitOutcome()}>
-                  {ACTION_LABEL[outcome]}
+                  {outcome === 'CONFIRM' && d.status === 'NEED_DATE' ? 'บันทึกและแจ้งผู้ขอ' : ACTION_LABEL[outcome]}
                 </Button>
               </div>
             </section>
@@ -342,7 +401,12 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
 
           {d.status === 'CALLED' && d.called_at && (
             <p className="rounded-md bg-warn-soft px-3 py-2 text-sm text-warn-ink">
-              เรียกคิวเมื่อ {formatDateTime(d.called_at)} (เรียกแล้ว {d.call_count} ครั้ง) · ยังไม่ได้รับการยืนยัน — ติดต่อ {d.requester_name} <PhoneLink value={d.requester_phone} />
+              เรียกคิวเมื่อ {formatDateTime(d.called_at)} (เรียกแล้ว {d.call_count} ครั้ง){d.bed_date ? ` · เตียงว่างวันที่ ${formatDate(d.bed_date)}` : ''} · ยังไม่ได้รับการยืนยัน — ติดต่อ {d.requester_name} <PhoneLink value={d.requester_phone} />
+            </p>
+          )}
+          {d.status === 'NEED_DATE' && (
+            <p className="rounded-md bg-accent-soft px-3 py-2 text-sm text-accent-ink">
+              {d.requester_name} ยืนยันว่าจะส่งตัว แต่วันที่เสนอ{d.bed_date ? ` (${formatDate(d.bed_date)})` : ''}ไม่สะดวก — โทรกลับเพื่อนัดวันที่ตรงกัน <PhoneLink value={d.requester_phone} /> แล้วกด "บันทึกวันที่ตกลง"
             </p>
           )}
 

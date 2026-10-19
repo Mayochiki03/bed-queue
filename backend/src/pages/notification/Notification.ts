@@ -4,7 +4,7 @@
  * ออกแบบตามระบบจองคิวนวด: แต่ละชนิดเปิด/ปิดได้ แก้หัวข้อ-ข้อความได้ (เก็บในตาราง notification_template)
  * ข้อความตั้งต้นไม่ใส่ชื่อผู้ป่วยโดยตั้งใจ — ข้อความผ่านเซิร์ฟเวอร์ LINE (นอกหน่วยงาน) ใช้เลขที่คำขอแทน (PDPA)
  */
-export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED';
+export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED';
 
 export type TemplateDef = {
   type: NotifyType;
@@ -24,11 +24,20 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
   {
     type: 'CALLED',
     name: 'เรียกคิว (ถึงคิวแล้ว)',
-    when: 'ส่งเมื่อเจ้าหน้าที่กด "เรียกคิว" ให้ผู้ขอกดยืนยัน/ไม่ยืนยันการส่งตัว',
+    when: 'ส่งเมื่อเจ้าหน้าที่กด "เรียกคิว" (พร้อมวันที่เตียงว่าง) ให้ผู้ขอกดยืนยัน / ยืนยันแต่ขอเลื่อนวัน / ไม่ยืนยัน',
     title: 'ถึงคิวของคุณแล้ว',
-    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถึงคิวแล้ว\nกรุณากดตอบว่ายืนยันส่งตัวหรือไม่ภายใน {timeout_hours} ชั่วโมง',
+    body: 'คำขอเลขที่ {request_no} ของ {hospital} ถึงคิวแล้ว\nเตียงว่างรับวันที่ {bed_date}\nกรุณากดตอบภายใน {timeout_hours} ชั่วโมง: ยืนยันตามวันที่แจ้ง หรือหากจะส่งตัวแต่วันนั้นไม่สะดวก ให้กด "ขอเลื่อนวัน" เจ้าหน้าที่จะโทรนัดวันใหม่',
     enabled: true,
-    button: 'ตอบรับ / ไม่ยืนยัน',
+    button: 'ตอบรับ / เลื่อนวัน',
+  },
+  {
+    type: 'CONFIRMED',
+    name: 'ยืนยันวันส่งตัว (โดยเจ้าหน้าที่)',
+    when: 'ส่งเมื่อเจ้าหน้าที่บันทึกวันที่ที่ตกลงกันแล้ว (หลังโทรนัดวัน หรือเปลี่ยนวันตอนยืนยัน) — ระบุวันที่และชื่อเจ้าหน้าที่ผู้ยืนยัน',
+    title: 'ยืนยันคิวส่งตัวแล้ว',
+    body: 'ขอยืนยันการจองคิวของคำขอเลขที่ {request_no} ของ {hospital}\nวันที่ส่งตัว: {bed_date}\nยืนยันโดยเจ้าหน้าที่ {staff_name}',
+    enabled: true,
+    button: 'เปิดดูคำขอ',
   },
   {
     type: 'CANCELLED',
@@ -84,6 +93,8 @@ export const TEMPLATE_VARS: { key: string; label: string; sample: string }[] = [
   { key: 'requester_name', label: 'ชื่อผู้ขอ', sample: 'สมศรี ใจดี' },
   { key: 'color', label: 'สี', sample: 'เหลือง' },
   { key: 'reason', label: 'เหตุผลการส่งต่อ', sample: 'ต้องการเตียงบำบัด' },
+  { key: 'bed_date', label: 'วันที่เตียงว่าง / วันที่ส่งตัว', sample: '20 ต.ค. 2569' },
+  { key: 'staff_name', label: 'ชื่อเจ้าหน้าที่ผู้ยืนยัน (ใช้กับข้อความยืนยันวัน)', sample: 'สมชาย ใจดี' },
   { key: 'timeout_hours', label: 'เวลารอยืนยัน (ชั่วโมง)', sample: '24' },
 ];
 

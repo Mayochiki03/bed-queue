@@ -21,6 +21,9 @@ const { checkConnection, closeDb, db } = await import('../src/core/db');
 const { resetDb } = await import('../src/core/migrate');
 
 let base = '';
+/** วันที่เตียงว่างที่ใช้ทดสอบ (อีก 3 วัน ตามเวลาไทย) */
+const { thaiToday } = await import('../src/core/thaiDate');
+const BED_DAY = thaiToday(new Date(Date.now() + 3 * 86_400_000));
 let server: ReturnType<ReturnType<typeof createApp>['listen']>;
 let cookie = '';
 let staffCookie = '';
@@ -652,14 +655,14 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
   it('เรียกคิว → ยืนยัน/ไม่ยืนยัน · ย้อนสถานะที่ไม่อนุญาตไม่ได้ (409) · ประวัติครบ', async () => {
     const t = (id: number, action: string, extra: Record<string, unknown> = {}) => call('POST', '/request/transition', { id, action, ...extra }, staff);
     assert.equal((await t(reqs.p1, 'CONFIRM')).http, 409); // ยังไม่ได้เรียก
-    assert.equal((await t(reqs.p1, 'CALL')).http, 200);
+    assert.equal((await t(reqs.p1, 'CALL', { bed_date: BED_DAY })).http, 200);
     let it = await item(reqs.p1);
     assert.equal(it.status, 'CALLED');
     assert.equal(it.call_count, 1);
     assert.equal(it.position_all, null); // ไม่อยู่ในคิวรอแล้ว
     assert.equal((await item(reqs.p3)).position_color, 2); // แดง: admin=1, p3=2 (p1 ออกจากคิว)
 
-    assert.equal((await t(reqs.p1, 'CALL')).http, 200); // เรียกซ้ำได้ เพิ่มจำนวนครั้ง
+    assert.equal((await t(reqs.p1, 'CALL', { bed_date: BED_DAY })).http, 200); // เรียกซ้ำได้ เพิ่มจำนวนครั้ง
     assert.equal((await item(reqs.p1)).call_count, 2);
     assert.equal((await t(reqs.p1, 'CONFIRM', { via: 'PHONE', note: 'โทรคุยแล้ว ส่งตัววันพรุ่งนี้' })).http, 200);
     assert.equal((await t(reqs.p1, 'CONFIRM')).http, 409); // กดซ้ำ
@@ -669,10 +672,10 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     assert.equal(d.resolved_via, 'PHONE');
     assert.deepEqual(d.events.map((e: any) => e.event), ['SUBMITTED', 'CALLED', 'CALLED', 'CONFIRMED']);
     assert.equal(d.events.at(-1).by_label, 'เจ้าหน้าที่ทดสอบ widget');
-    assert.equal(d.events.at(-1).detail, 'โทรคุยแล้ว ส่งตัววันพรุ่งนี้');
+    assert.match(d.events.at(-1).detail, /โทรคุยแล้ว ส่งตัววันพรุ่งนี้$/); // มีวันที่ส่งตัวนำหน้า
 
     // ไม่ยืนยัน → เปิดคิวใหม่ กลับมาที่ตำแหน่งเดิม
-    assert.equal((await t(reqs.p2, 'CALL')).http, 200);
+    assert.equal((await t(reqs.p2, 'CALL', { bed_date: BED_DAY })).http, 200);
     assert.equal((await t(reqs.p2, 'DECLINE', { via: 'PHONE' })).http, 200);
     assert.equal((await t(reqs.p2, 'REOPEN')).http, 200);
     assert.equal((await item(reqs.p2)).status, 'WAITING');
@@ -681,8 +684,8 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
   });
 
   it('คืนคิว (เรียกแล้วติดต่อไม่ได้) · เกินเวลา confirm_timeout_hours ขึ้น overdue · ยกเลิก', async () => {
-    const t = (id: number, action: string) => call('POST', '/request/transition', { id, action }, staff);
-    await t(reqs.p3, 'CALL');
+    const t = (id: number, action: string, extra: Record<string, unknown> = {}) => call('POST', '/request/transition', { id, action, ...extra }, staff);
+    await t(reqs.p3, 'CALL', { bed_date: BED_DAY });
     assert.equal((await item(reqs.p3)).overdue, false);
     await db('bed_request').where({ id: reqs.p3 }).update({ called_at: new Date(Date.now() - 30 * 3_600_000).toISOString() });
     const over = await item(reqs.p3);
@@ -727,7 +730,7 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     assert.equal((await call('POST', '/request/transfer', { id: reqs.p1, requester_id: b }, staff)).http, 409);
   });
 
-  it('ฝั่งผู้ขอ: ดูคำขอ+ลำดับตาม queue_display · ถูกเรียกแล้วกดยืนยัน/ไม่ยืนยันเอง · ยกเลิกของคนอื่นไม่ได้', async () => {
+  it('ฝั่งผู้ขอ: ดูคำขอ+ลำดับตาม queue_display · ถูกเรียกแล้วกดยืนยัน/ไม่ยืนยันเอง · ต่าง รพ. แตะกันไม่ได้ ร่วม รพ. เห็นร่วมกัน', async () => {
     const setDisplay = (v: string) => call('POST', '/setting/save', { values: { queue_display: v } });
     await setDisplay('all');
     let mine = (await as('mine', { requester_id: a })).data as any[];
@@ -743,12 +746,15 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
     mine = (await as('mine', { requester_id: a })).data;
     assert.equal(mine.find((m) => m.id === w.id).position_color, null);
 
-    // ผู้ขอ B ไปแตะคำขอของ A ไม่ได้
-    assert.equal((await as('cancel', { requester_id: b, id: reqs.p2 })).http, 404);
-    assert.equal((await as('respond', { requester_id: b, id: reqs.p2, accept: true })).http, 404);
+    // ผู้ขอ C (คนละ รพ.) ไปแตะคำขอของ รพ.สงขลา ไม่ได้ และมองไม่เห็น
+    assert.equal((await as('cancel', { requester_id: c, id: reqs.p2 })).http, 404);
+    assert.equal((await as('respond', { requester_id: c, id: reqs.p2, accept: true })).http, 404);
+    assert.ok(!((await as('mine', { requester_id: c })).data as any[]).some((m) => m.id === reqs.p2));
+    // ผู้ขอ B (รพ.เดียวกับ A) เห็นคำขอของ รพ. ร่วมกัน
+    assert.ok(((await as('mine', { requester_id: b })).data as any[]).some((m) => m.id === reqs.p2), 'เจ้าหน้าที่ รพ. เดียวกันเห็นผู้ป่วยของ รพ. ร่วมกัน');
 
     // ถูกเรียก → ผู้ขอกดยืนยันเอง (via LINE)
-    await call('POST', '/request/transition', { id: reqs.p2, action: 'CALL' }, staff);
+    await call('POST', '/request/transition', { id: reqs.p2, action: 'CALL', bed_date: BED_DAY }, staff);
     assert.equal((await as('respond', { requester_id: a, id: reqs.p2, accept: true })).http, 200);
     const d = (await call('POST', '/request/get', { id: reqs.p2 }, staff)).data;
     assert.equal(d.status, 'CONFIRMED');
@@ -869,13 +875,13 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
   let rid = 0;
   const logs = async (type?: string) => (await call('POST', '/notification/logs', { type: type ?? '' })).data.resultList as any[];
 
-  it('ตั้งต้น: 6 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
+  it('ตั้งต้น: 7 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
     staff = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     assert.equal((await call('POST', '/notification/templates', {}, staff)).http, 403);
     const t = (await call('POST', '/notification/templates', {})).data;
-    assert.equal(t.templates.length, 6);
+    assert.equal(t.templates.length, 7);
     const on = Object.fromEntries(t.templates.map((x: any) => [x.type, x.is_enabled]));
-    assert.deepEqual(on, { CALLED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, SUBMITTED: false, REOPENED: false });
+    assert.deepEqual(on, { CALLED: true, CONFIRMED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, SUBMITTED: false, REOPENED: false });
     // ข้อความตั้งต้นไม่มีชื่อผู้ป่วย (PDPA)
     assert.ok(t.templates.every((x: any) => !/patient_name|ชื่อผู้ป่วย/.test(x.body)));
   });
@@ -885,7 +891,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
     who = (await call('POST', '/dev/mock/create', { full_name: 'ผู้ขอแจ้งเตือน', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0811111111' })).data.id;
     rid = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย แจ้งเตือน', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
     assert.equal((await logs('SUBMITTED')).length, 0); // SUBMITTED ปิดอยู่
-    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff)).http, 200);
+    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL', bed_date: BED_DAY }, staff)).http, 200);
     let l = await logs('CALLED');
     assert.equal(l.length, 1);
     assert.equal(l[0].status, 'SKIPPED');
@@ -895,12 +901,12 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
     const t = (await call('POST', '/notification/templates', {})).data.templates.find((x: any) => x.type === 'CALLED');
     assert.equal((await call('POST', '/notification/save', { type: 'CALLED', title: t.title, body: t.body, is_enabled: false })).http, 200);
     assert.equal((await call('POST', '/request/transition', { id: rid, action: 'REQUEUE' }, staff)).http, 200);
-    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff)).http, 200);
+    assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL', bed_date: BED_DAY }, staff)).http, 200);
     assert.equal((await logs('CALLED')).length, 1, 'ปิดชนิดแล้วต้องไม่จด/ไม่ส่ง');
     assert.equal((await logs('REQUEUED')).length, 1); // ชนิดอื่นยังทำงาน
     await call('POST', '/notification/save', { type: 'CALLED', title: t.title, body: t.body, is_enabled: true });
     await call('POST', '/request/transition', { id: rid, action: 'REQUEUE' }, staff);
-    await call('POST', '/request/transition', { id: rid, action: 'CALL' }, staff);
+    await call('POST', '/request/transition', { id: rid, action: 'CALL', bed_date: BED_DAY }, staff);
     assert.equal((await logs('CALLED')).length, 2);
   });
 
@@ -937,7 +943,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
     }) as typeof fetch;
     try {
       const a1 = await mkReq('ผู้ป่วย ส่งจริง1');
-      await call('POST', '/request/transition', { id: a1, action: 'CALL' }, staff);
+      await call('POST', '/request/transition', { id: a1, action: 'CALL', bed_date: BED_DAY }, staff);
       assert.equal(sent.length, 1);
       assert.equal(sent[0]!.url, 'https://api.line.me/v2/bot/message/push');
       assert.equal(sent[0]!.auth, 'Bearer tok-ABC');
@@ -950,7 +956,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
 
       respond = () => ({ ok: false, status: 400, json: { message: 'Invalid reply token' } });
       const a2 = await mkReq('ผู้ป่วย ส่งจริง2');
-      await call('POST', '/request/transition', { id: a2, action: 'CALL' }, staff);
+      await call('POST', '/request/transition', { id: a2, action: 'CALL', bed_date: BED_DAY }, staff);
       const failed = (await logs('CALLED'))[0];
       assert.equal(failed.status, 'FAILED');
       assert.match(failed.error_message, /Invalid reply token/);
@@ -960,7 +966,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
       await save({ line_monthly_quota: 1 }); // ส่งไปแล้ว 1 ข้อความ → เต็ม
       const before = sent.length;
       const a3 = await mkReq('ผู้ป่วย ส่งจริง3');
-      await call('POST', '/request/transition', { id: a3, action: 'CALL' }, staff);
+      await call('POST', '/request/transition', { id: a3, action: 'CALL', bed_date: BED_DAY }, staff);
       assert.equal(sent.length, before, 'โควต้าเต็มต้องไม่เรียก LINE');
       const skipped = (await logs('CALLED'))[0];
       assert.equal(skipped.status, 'SKIPPED');
@@ -1126,7 +1132,8 @@ describe('LINE webhook', () => {
     const hosp = (await db('hospital').where({ code: '11206' }).first()).id;
     const now = new Date().toISOString();
     await db('requester').insert({ line_user_id: uid, full_name: 'ผู้ขอ เว็บฮุก', phone: '0800000001', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
-    await db('requester').insert({ line_user_id: 'U-hook-2', full_name: 'คนอื่น', phone: '0800000002', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
+    const otherHosp = await (await import('../src/pages/hospital')).hospitalService.findOrCreate('99998', 'รพ.อื่นทดสอบ');
+    await db('requester').insert({ line_user_id: 'U-hook-2', full_name: 'คนอื่น', phone: '0800000002', hospital_id: otherHosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
     const rid = (await db('requester').where({ line_user_id: uid }).first()).id;
     const mk = async (name: string) => (await call('POST', '/request/add', { hospital_id: hosp, requester_id: rid, requester_name: 'x', patient_name: name, color_code: 'RED' }, staffC)).data.id as number;
     waitingId = await mk('ผู้ป่วย รอคิวลับ');
@@ -1175,20 +1182,20 @@ describe('LINE webhook', () => {
 
   it('การ์ดเรียกคิวมีปุ่มยืนยัน/ไม่ยืนยันเมื่อเปิด webhook · ปิดตัวเลือก line_call_buttons → เหลือแค่ปุ่มเปิดเว็บ', async () => {
     sent = [];
-    await call('POST', '/request/transition', { id: calledId, action: 'CALL' }, staffC);
+    await call('POST', '/request/transition', { id: calledId, action: 'CALL', bed_date: BED_DAY }, staffC);
     assert.equal(sent[0]!.url, 'https://api.line.me/v2/bot/message/push');
     let t = textOf(0);
     assert.ok(t.includes(`a=confirm&r=${calledId}`) && t.includes(`a=decline&r=${calledId}`));
     await save({ line_call_buttons: false });
     sent = [];
     await call('POST', '/request/transition', { id: calledId, action: 'REQUEUE' }, staffC);
-    await call('POST', '/request/transition', { id: calledId, action: 'CALL' }, staffC);
+    await call('POST', '/request/transition', { id: calledId, action: 'CALL', bed_date: BED_DAY }, staffC);
     const push = sent.find((s) => s.body.messages?.[0]?.altText && JSON.stringify(s.body).includes('ถึงคิว'));
     assert.ok(push && !JSON.stringify(push.body).includes('a=confirm'));
     await save({ line_call_buttons: true });
   });
 
-  it('กด "ไม่ยืนยัน" → ถามซ้ำก่อน (ยังไม่เปลี่ยนสถานะ) · คนอื่นกดคำขอของเราไม่ได้', async () => {
+  it('กด "ไม่ยืนยัน" → ถามซ้ำก่อน (ยังไม่เปลี่ยนสถานะ) · คนต่าง รพ. กดคำขอของเราไม่ได้', async () => {
     sent = [];
     await post({ events: [{ type: 'postback', replyToken: 'rt-4', source: { userId: uid }, postback: { data: `a=decline&r=${calledId}` } }] });
     await waitSent(1);
@@ -1254,6 +1261,208 @@ describe('LINE webhook', () => {
     await save({ connection_mode: 'LOCAL', line_channel_token: '', public_base_url: '', liff_id: '' });
     await db('app_setting').where({ key: 'line_channel_secret' }).delete();
     (await import('../src/core/settings')).invalidateSettings();
+  });
+});
+
+describe('วันที่เตียงว่าง + ยืนยันจะมาแต่ขอเลื่อนวัน (NEED_DATE)', () => {
+  const SECRET = 'sec-DATE';
+  const realFetch = globalThis.fetch;
+  let sent: { url: string; body: any }[] = [];
+  const fake = (async (url: any, init: any) => {
+    if (!String(url).startsWith('https://api.line.me')) return realFetch(url, init);
+    sent.push({ url: String(url), body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => ({}) } as Response;
+  }) as typeof fetch;
+  const save = (values: Record<string, unknown>) => call('POST', '/setting/save', { values });
+  const sign = (raw: string) => createHmac('sha256', SECRET).update(raw).digest('base64');
+  const postback = (uid: string, data: string) => {
+    const raw = JSON.stringify({ events: [{ type: 'postback', replyToken: 'rt', source: { userId: uid }, postback: { data } }] });
+    return fetch(`${base}/line/webhook`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-line-signature': sign(raw) }, body: raw });
+  };
+  const waitSent = async (n: number) => {
+    for (let i = 0; i < 100 && sent.length < n; i++) await new Promise((r) => setTimeout(r, 20));
+  };
+  const day = (n: number) => thaiToday(new Date(Date.now() + n * 86_400_000));
+  const uid = 'U-date-1';
+  let staffD = '';
+  let hosp = 0;
+  let rid = 0;
+  const mk = async (name: string) => (await call('POST', '/request/add', { hospital_id: hosp, requester_id: rid, requester_name: 'x', patient_name: name, color_code: 'GREEN' }, staffD)).data.id as number;
+  const tr = (id: number, action: string, extra: Record<string, unknown> = {}) => call('POST', '/request/transition', { id, action, ...extra }, staffD);
+  const row = (id: number) => db('bed_request').where({ id }).first();
+
+  before(async () => {
+    staffD = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    await save({ connection_mode: 'DEV_TUNNEL', line_channel_token: 'tok-D', line_channel_secret: SECRET, public_base_url: 'https://bed.example.com', liff_id: '88-date' });
+    await call('POST', '/dev/mock/create', { full_name: 'ตัวสร้าง รพ.', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0800000000' });
+    hosp = (await db('hospital').where({ code: '11206' }).first()).id;
+    const now = new Date().toISOString();
+    await db('requester').insert({ line_user_id: uid, full_name: 'ผู้ขอ วันที่', phone: '0800000077', hospital_id: hosp, pdpa_accepted_at: now, created_at: now, updated_at: now });
+    rid = (await db('requester').where({ line_user_id: uid }).first()).id;
+    globalThis.fetch = fake;
+  });
+  after(async () => {
+    globalThis.fetch = realFetch;
+    await save({ connection_mode: 'LOCAL', line_channel_token: '', public_base_url: '', liff_id: '' });
+    await db('app_setting').where({ key: 'line_channel_secret' }).delete();
+    (await import('../src/core/settings')).invalidateSettings();
+  });
+
+  it('เรียกคิวต้องใส่วันที่เตียงว่าง: ไม่ใส่/วันที่ผ่านมาแล้ว/วันที่ไม่มีจริง → 400 · ใส่ถูก → บันทึกวันที่ + จดในประวัติ', async () => {
+    const id = await mk('ผู้ป่วย วันที่ 1');
+    assert.equal((await tr(id, 'CALL')).http, 400);
+    assert.equal((await tr(id, 'CALL', { bed_date: day(-1) })).http, 400);
+    assert.equal((await tr(id, 'CALL', { bed_date: '2026-02-30' })).http, 400);
+    assert.equal((await tr(id, 'CALL', { bed_date: day(0) })).http, 200, 'วันนี้ทำได้');
+    assert.equal((await row(id)).bed_date, day(0));
+    assert.equal((await tr(id, 'CALL', { bed_date: day(2), note: 'เลื่อนเป็นวันที่ใหม่' })).http, 200);
+    const d = (await call('POST', '/request/get', { id }, staffD)).data;
+    assert.equal(d.bed_date, day(2));
+    assert.match(d.events.at(-1).detail, /เตียงว่างวันที่ .*เลื่อนเป็นวันที่ใหม่/);
+  });
+
+  it('การ์ด LINE ตอนเรียกคิว: บอกวันที่เตียงว่าง + 3 ปุ่ม (ยืนยัน / ขอเลื่อนวัน / ไม่ยืนยัน) ป้ายปุ่มไม่เกิน 20 ตัวอักษร', async () => {
+    sent = [];
+    const id = await mk('ผู้ป่วย วันที่ 2');
+    await tr(id, 'CALL', { bed_date: day(2) });
+    await waitSent(1);
+    const msg = sent[0]!.body.messages[0];
+    const text = JSON.stringify(msg);
+    assert.ok(text.includes('เตียงว่างรับวันที่') && /2569|25\d\d/.test(text));
+    for (const a of ['confirm', 'defer', 'decline']) assert.ok(text.includes(`a=${a}&r=${id}`), `ขาดปุ่ม ${a}`);
+    const labels: string[] = msg.contents.footer.contents.map((b: any) => b.action.label);
+    assert.ok(labels.every((l) => [...l].length <= 20), `ป้ายปุ่มยาวเกิน: ${labels.join(' | ')}`);
+    assert.ok(!text.includes('ผู้ป่วย วันที่ 2'), 'ห้ามมีชื่อผู้ป่วย');
+  });
+
+  it('กด "ส่งได้ แต่ขอเลื่อนวัน" → NEED_DATE · ขึ้นบอร์ดพร้อมวันที่เดิม · ยังนับเป็นคำขอเปิด (ส่งซ้ำไม่ได้) · ปุ่มกดซ้ำไม่พัง', async () => {
+    const id = await mk('ผู้ป่วย วันที่ 3');
+    await tr(id, 'CALL', { bed_date: day(2) });
+    sent = [];
+    assert.equal((await postback(uid, `a=defer&r=${id}`)).status, 200);
+    await waitSent(1);
+    assert.ok(JSON.stringify(sent[0]!.body.messages).includes('โทรกลับ'));
+    const r = await row(id);
+    assert.equal(r.status, 'NEED_DATE');
+    assert.equal(r.bed_date, day(2), 'ยังเก็บวันที่ที่เสนอไว้อ้างอิง');
+    assert.ok(r.responded_at);
+    const board = (await call('POST', '/request/board', {}, staffD)).data.items.find((x: any) => x.id === id);
+    assert.equal(board.status, 'NEED_DATE');
+    assert.equal(board.overdue, false);
+    assert.equal(board.position_all, null);
+    assert.equal((await call('POST', '/request/add', { hospital_id: hosp, requester_id: rid, requester_name: 'x', patient_name: 'ผู้ป่วย วันที่ 3' }, staffD)).http, 409);
+    sent = [];
+    await postback(uid, `a=defer&r=${id}`);
+    await waitSent(1);
+    assert.ok(JSON.stringify(sent[0]!.body.messages).includes('ทำรายการไม่ได้'));
+    const ev = (await call('POST', '/request/get', { id }, staffD)).data.events.map((e: any) => e.event);
+    assert.deepEqual(ev, ['SUBMITTED', 'CALLED', 'DEFERRED']);
+  });
+
+  it('บันทึกวันที่ตกลงกัน (จาก NEED_DATE): ต้องมีวันที่ → CONFIRMED + แจ้ง LINE พร้อมวันที่และชื่อเจ้าหน้าที่ผู้ยืนยัน', async () => {
+    const id = await mk('ผู้ป่วย วันที่ 4');
+    await tr(id, 'CALL', { bed_date: day(2) });
+    await tr(id, 'DEFER');
+    assert.equal((await tr(id, 'CONFIRM')).http, 400, 'ต้องระบุวันที่ที่ตกลงกัน');
+    assert.equal((await tr(id, 'CONFIRM', { bed_date: day(-2) })).http, 400);
+    sent = [];
+    assert.equal((await tr(id, 'CONFIRM', { bed_date: day(5), via: 'PHONE', note: 'โทรนัดแล้ว' })).http, 200);
+    const r = await row(id);
+    assert.equal(r.status, 'CONFIRMED');
+    assert.equal(r.bed_date, day(5));
+    assert.equal(r.resolved_via, 'PHONE');
+    await waitSent(1);
+    const text = JSON.stringify(sent[0]!.body.messages);
+    assert.ok(text.includes('ขอยืนยันการจองคิว') && text.includes(`BQ${String(id).padStart(6, '0')}`));
+    assert.ok(text.includes('เจ้าหน้าที่ทดสอบ widget'), 'ต้องมีชื่อเจ้าหน้าที่ผู้ยืนยัน');
+    assert.ok(!text.includes('ผู้ป่วย วันที่ 4'));
+    const last = (await call('POST', '/request/get', { id }, staffD)).data.events.at(-1);
+    assert.equal(last.event, 'CONFIRMED');
+    assert.match(last.detail, /วันที่ส่งตัว .*เดิมเสนอ .*โทรนัดแล้ว/);
+    assert.equal((await db('notification_log').where({ request_id: id, type: 'CONFIRMED' }).first()).status, 'SENT');
+  });
+
+  it('ยืนยันจากสถานะ "เรียกแล้ว" ตามวันที่เสนอ → ไม่ส่งข้อความซ้ำ · เปลี่ยนวันตอนยืนยัน → ส่งข้อความยืนยันวันใหม่', async () => {
+    const a = await mk('ผู้ป่วย วันที่ 5');
+    await tr(a, 'CALL', { bed_date: day(2) });
+    sent = [];
+    assert.equal((await tr(a, 'CONFIRM', { via: 'PHONE' })).http, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(sent.length, 0);
+    assert.equal((await row(a)).bed_date, day(2));
+    const b = await mk('ผู้ป่วย วันที่ 6');
+    await tr(b, 'CALL', { bed_date: day(2) });
+    sent = [];
+    assert.equal((await tr(b, 'CONFIRM', { via: 'PHONE', bed_date: day(4) })).http, 200);
+    await waitSent(1);
+    assert.ok(JSON.stringify(sent[0]!.body.messages).includes('ขอยืนยันการจองคิว'));
+    assert.equal((await row(b)).bed_date, day(4));
+  });
+
+  it('จาก NEED_DATE: เรียกใหม่ด้วยวันใหม่ได้ · คืนคิวได้ (วันที่ถูกล้าง) · ไม่ยืนยัน/ยกเลิกได้ · ขอเลื่อนวันได้เฉพาะตอนเรียกแล้ว', async () => {
+    const a = await mk('ผู้ป่วย วันที่ 7');
+    assert.equal((await tr(a, 'DEFER')).http, 409, 'ยังไม่ได้เรียก');
+    await tr(a, 'CALL', { bed_date: day(1) });
+    await tr(a, 'DEFER');
+    assert.equal((await tr(a, 'DEFER')).http, 409);
+    assert.equal((await tr(a, 'CALL', { bed_date: day(6) })).http, 200);
+    let r = await row(a);
+    assert.equal(r.status, 'CALLED');
+    assert.equal(r.bed_date, day(6));
+    assert.equal(r.responded_at, null);
+    await tr(a, 'DEFER');
+    assert.equal((await tr(a, 'REQUEUE')).http, 200);
+    r = await row(a);
+    assert.equal(r.status, 'WAITING');
+    assert.equal(r.bed_date, null);
+    const b = await mk('ผู้ป่วย วันที่ 8');
+    await tr(b, 'CALL', { bed_date: day(1) });
+    await tr(b, 'DEFER');
+    assert.equal((await tr(b, 'DECLINE')).http, 200);
+    const c = await mk('ผู้ป่วย วันที่ 9');
+    await tr(c, 'CALL', { bed_date: day(1) });
+    await tr(c, 'DEFER');
+    assert.equal((await tr(c, 'CANCEL')).http, 200);
+  });
+
+  it('ผู้ขอตอบ DEFER ผ่าน API (answer) · ไม่ส่งคำตอบ → 400 · dashboard นับรอนัดวัน · ส่งออก Excel มีคอลัมน์วันที่เตียง', async () => {
+    const mid = (await call('POST', '/dev/mock/create', { full_name: 'ผู้ขอจำลอง วันที่', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0800000099' })).data.id as number;
+    const sub = await call('POST', '/dev/as/submit', { requester_id: mid, request: { patient_name: 'ผู้ป่วย วันที่ 11', color_code: 'GREEN' } });
+    assert.equal(sub.http, 201);
+    await tr(sub.data.id, 'CALL', { bed_date: day(3) });
+    assert.equal((await call('POST', '/dev/as/respond', { requester_id: mid, id: sub.data.id })).http, 400, 'ไม่ส่งคำตอบ → 400');
+    const r1 = await call('POST', '/dev/as/respond', { requester_id: mid, id: sub.data.id, answer: 'DEFER' });
+    assert.equal(r1.http, 200, JSON.stringify(r1.data));
+    assert.equal((await row(sub.data.id)).status, 'NEED_DATE');
+    assert.ok((await call('POST', '/dashboard/summary', {})).data.queue.need_date >= 1);
+
+    const res = await fetch(`${base}/export/build`, { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ sections: ['requests', 'events'], scope: 'all' }) });
+    assert.equal(res.status, 200);
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as any);
+    const ws = wb.getWorksheet('คำขอ')!;
+    const headerRow = ws.getRow(4).values as unknown[];
+    assert.ok(headerRow.includes('วันที่เตียงว่าง / วันที่ส่งตัว'));
+    const all = JSON.stringify(wb.getWorksheet('ประวัติเหตุการณ์')!.getSheetValues());
+    assert.ok(all.includes('ยืนยันจะมา ขอเลื่อนวัน'));
+  });
+
+  it('ข้อมูลตัวอย่างสำหรับโชว์ (mock): สร้างครบทุกสถานะ มีวันที่เตียง/ประวัติรอนัดวัน · ลบแล้วไม่เหลือ ไม่แตะข้อมูลอื่น', async () => {
+    const { createMock, clearMock } = await import('../src/mockData');
+    await clearMock(); // เริ่มจากไม่มีผู้ขอจำลอง (เทสต์ก่อนหน้าสร้างไว้)
+    const keep = Number(((await db('bed_request').count({ n: '*' }).first()) as { n: number | string }).n);
+    const r = await createMock();
+    assert.equal(r.requests, 60);
+    const isMock = (q: any) => q.whereIn('requester_id', db('requester').where('line_user_id', 'like', 'MOCK-demo%').select('id'));
+    const by = Object.fromEntries((await isMock(db('bed_request')).groupBy('status').select('status').count({ n: '*' })).map((x: any) => [x.status, Number(x.n)]));
+    assert.deepEqual(by, { WAITING: 14, CALLED: 5, NEED_DATE: 4, CONFIRMED: 25, DECLINED: 6, CANCELLED: 6 });
+    assert.equal((await isMock(db('bed_request')).whereIn('status', ['CALLED', 'NEED_DATE', 'CONFIRMED']).whereNull('bed_date')).length, 0, 'เรียกแล้ว/รอนัดวัน/ยืนยัน ต้องมีวันที่');
+    const need = await isMock(db('bed_request')).where({ status: 'NEED_DATE' }).select('id');
+    for (const x of need) assert.deepEqual((await db('request_event').where({ request_id: x.id }).orderBy('id')).map((e: any) => e.event), ['SUBMITTED', 'CALLED', 'DEFERRED']);
+    const cleared = await clearMock();
+    assert.equal(cleared.requests, 60);
+    assert.equal(Number(((await db('bed_request').count({ n: '*' }).first()) as { n: number | string }).n), keep);
   });
 });
 
@@ -1344,27 +1553,71 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
     await save({ connection_mode: 'DEV_TUNNEL' });
   });
 
-  it('ลงทะเบียน (ต้องรับทราบ PDPA) → ส่งคำขอ → เห็นเฉพาะของตัวเอง · ตัวตนมาจาก LINE ไม่ใช่จาก body', async () => {
+  it('ลงทะเบียน: ต้องรับทราบ PDPA · รหัส+ชื่อ รพ. ต้องตรงรายชื่อกลาง · สมัครแล้วรออนุมัติ ใช้งานไม่ได้จนกว่าเจ้าหน้าที่อนุมัติ', async () => {
     assert.equal((await post('/profile', {}, 'tok-A')).data, null);
     const noPdpa = await post('/save-profile', { profile }, 'tok-A');
     assert.equal(noPdpa.http, 400);
-    const saved = await post('/save-profile', { profile: { ...profile, accept_pdpa: true } }, 'tok-A');
+    // รหัสไม่มีในรายชื่อ / ชื่อไม่ตรงกับรหัส → 400 พร้อมบอกชื่อที่ถูกต้อง
+    const noCode = await post('/save-profile', { profile: { ...profile, hospital_code: '55555', accept_pdpa: true } }, 'tok-A');
+    assert.equal(noCode.http, 400);
+    assert.ok(noCode.fields?.hospital_code);
+    const wrongName = await post('/save-profile', { profile: { ...profile, hospital_name: 'รพ.หาดใหญ่', accept_pdpa: true } }, 'tok-A');
+    assert.equal(wrongName.http, 400);
+    assert.ok(String(wrongName.message).includes('รพ.สงขลา'));
+    assert.equal(await db('requester').where({ line_user_id: 'U-liff-A' }).first(), undefined, 'ไม่ผ่านตรวจ = ไม่สร้างสมาชิก');
+    // ค้นชื่อจากรหัส (เติมชื่อในฟอร์ม) · ชื่อเขียนแบบ "โรงพยาบาล..." ก็ผ่าน
+    assert.deepEqual((await post('/hospital-check', { code: '11206' }, 'tok-A')).data, { found: true, name: 'รพ.สงขลา' });
+    assert.equal((await post('/hospital-check', { code: '55555' }, 'tok-A')).data.found, false);
+    assert.equal((await post('/hospital-check', { code: '11206' })).http, 401, 'ต้องมี token');
+
+    const saved = await post('/save-profile', { profile: { ...profile, hospital_name: 'โรงพยาบาลสงขลา', accept_pdpa: true } }, 'tok-A');
     assert.equal(saved.http, 200);
+    assert.equal(saved.data.approval_status, 'PENDING');
     assert.equal((await db('requester').where({ line_user_id: 'U-liff-A' }).first()).display_name, 'สมชาย');
+    assert.equal((await post('/profile', {}, 'tok-A')).data.approval_status, 'PENDING', 'ดูโปรไฟล์ตัวเองได้ขณะรออนุมัติ');
+    assert.equal((await post('/submit', { request: patient }, 'tok-A')).http, 403, 'รออนุมัติ = ส่งคำขอไม่ได้');
+    assert.equal((await post('/mine', {}, 'tok-A')).http, 403);
+
+    // เจ้าหน้าที่เห็นในหน้าสมาชิก → อนุมัติ
+    assert.equal((await call('POST', '/member/pending-count', {})).data.count, 1);
+    const list = (await call('POST', '/member/search', { status: 'PENDING' })).data.resultList as any[];
+    assert.equal(list.length, 1);
+    assert.equal(list[0].hospital_code, '11206');
+    assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
+    assert.equal((await call('POST', '/member/pending-count', {})).data.count, 0);
+    const prof = (await post('/profile', {}, 'tok-A')).data;
+    assert.equal(prof.approval_status, 'APPROVED');
 
     const sub = await post('/submit', { request: patient }, 'tok-A');
     assert.equal(sub.http, 201);
     const mineA = (await post('/mine', {}, 'tok-A')).data;
-    assert.equal(mineA.length, 1);
-    assert.equal(mineA[0].status, 'WAITING');
+    assert.equal(mineA.find((x: any) => x.id === sub.data.id).status, 'WAITING');
+    assert.ok(mineA.every((x: any) => x.hospital_id === prof.hospital_id), 'เห็นเฉพาะคำขอของ รพ. ตัวเอง (ร่วมกับเพื่อนร่วม รพ.)');
 
-    // ผู้ใช้อีกคน: ต้องลงทะเบียนก่อน และมองไม่เห็น/ยกเลิกคำขอของคนแรกไม่ได้ ต่อให้ส่ง requester_id/line_user_id ปลอมมาใน body
+    // ผู้ใช้อีกคน (รพ.อื่น): ต้องลงทะเบียน+อนุมัติก่อน แล้วมองไม่เห็น/ยกเลิกคำขอของ รพ.สงขลาไม่ได้ ต่อให้ส่ง requester_id/line_user_id ปลอมมาใน body
     assert.equal((await post('/mine', { line_user_id: 'U-liff-A', requester_id: saved.data.id }, 'tok-B')).http, 400, 'ยังไม่ลงทะเบียน');
-    await post('/save-profile', { profile: { ...profile, full_name: 'สมหญิง', accept_pdpa: true } }, 'tok-B');
+    const other = await post('/save-profile', { profile: { ...profile, full_name: 'สมหญิง', hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', accept_pdpa: true } }, 'tok-B');
+    assert.equal(other.http, 200);
+    assert.equal((await post('/mine', {}, 'tok-B')).http, 403, 'รออนุมัติ');
+    await call('POST', '/member/approve', { id: other.data.id });
     assert.equal((await post('/mine', { line_user_id: 'U-liff-A' }, 'tok-B')).data.length, 0);
     assert.equal((await post('/cancel', { id: sub.data.id }, 'tok-B')).http, 404);
     assert.equal((await post('/respond', { id: sub.data.id, accept: true }, 'tok-B')).http, 404);
+
+    assert.equal((await call('POST', '/member/reject', { id: other.data.id, note: 'ไม่ใช่เจ้าหน้าที่' })).http, 200);
+    assert.equal((await post('/mine', {}, 'tok-B')).http, 403, 'ถูกไม่อนุมัติ = ใช้ไม่ได้');
+    assert.ok(String((await post('/mine', {}, 'tok-B')).message).includes('ไม่ใช่เจ้าหน้าที่'));
+
     assert.equal((await post('/cancel', { id: sub.data.id }, 'tok-A')).http, 200);
+    assert.equal((await call('POST', '/member/approve', { id: 999999 })).http, 404);
+    // ผู้ขอจำลองของ dev ไม่โผล่ในหน้าสมาชิก/อนุมัติไม่ได้
+    const mockId = (await call('POST', '/dev/mock/create', { full_name: 'จำลอง', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0800000055' })).data.id as number;
+    assert.ok(!((await call('POST', '/member/search', {})).data.resultList as any[]).some((m) => m.id === mockId), 'ผู้ขอจำลองไม่โผล่ในหน้าสมาชิก');
+    assert.equal((await call('POST', '/member/approve', { id: mockId })).http, 404);
+    // เปลี่ยน รพ. ภายหลัง → กลับไปรออนุมัติใหม่
+    const move = await post('/save-profile', { profile: { ...profile, hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', accept_pdpa: true } }, 'tok-A');
+    assert.equal(move.data.approval_status, 'PENDING');
+    await call('POST', '/member/approve', { id: move.data.id });
   });
 
   it('จำผลตรวจ token ไว้ ไม่เรียก LINE ซ้ำทุกคำสั่ง', async () => {
@@ -1373,6 +1626,128 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
     await post('/mine', {}, 'tok-A');
     await post('/mine', {}, 'tok-A');
     assert.equal(verifyCalls, 0, 'tok-A ถูกจำไว้แล้วจากเทสต์ก่อนหน้า');
+  });
+});
+
+describe('โรงพยาบาล: เขตสุขภาพ + นำเข้า Excel (แม่แบบ → ดูตัวอย่าง → ยืนยัน)', () => {
+  const ExcelJS = async () => (await import('exceljs')).default;
+  /** สร้างไฟล์ xlsx จากแถว (แถวแรกคือหัวตาราง) แล้วแปลงเป็น base64 ตามที่หน้าเว็บส่ง */
+  const xlsxBase64 = async (rows: (string | number | null)[][], sheetFirst = true) => {
+    const E = await ExcelJS();
+    const wb = new E.Workbook();
+    if (!sheetFirst) wb.addWorksheet('อื่น');
+    const ws = wb.addWorksheet('รายชื่อ');
+    rows.forEach((r) => ws.addRow(r));
+    return Buffer.from(await wb.xlsx.writeBuffer()).toString('base64');
+  };
+  const HEAD = ['รหัสโรงพยาบาล', 'ชื่อโรงพยาบาล', 'เขตสุขภาพ', 'สถานะ'];
+  const prev = (file_base64: string) => call('POST', '/hospital/import-preview', { filename: 't.xlsx', file_base64 });
+  const commit = (file_base64: string) => call('POST', '/hospital/import-commit', { filename: 't.xlsx', file_base64 });
+
+  it('เพิ่ม/แก้ รพ. พร้อมเขตสุขภาพ 1-14 (ว่างได้ · นอกช่วง 400)', async () => {
+    const add = await call('POST', '/hospital/add', { code: '20001', name: 'รพ.ทดสอบเขต', health_region: 12 });
+    assert.equal(add.http, 201);
+    assert.equal((await call('POST', '/hospital/get', { id: add.data.id })).data.health_region, 12);
+    assert.equal((await call('POST', '/hospital/add', { code: '20002', name: 'รพ.ไม่มีเขต', health_region: '' })).http, 201);
+    assert.equal((await call('POST', '/hospital/add', { code: '20003', name: 'x', health_region: 15 })).http, 400);
+    assert.equal((await call('POST', '/hospital/add', { code: '20003', name: 'x', health_region: 'abc' })).http, 400);
+    assert.equal((await call('POST', '/hospital/update', { id: add.data.id, code: '20001', name: 'รพ.ทดสอบเขต', health_region: '', is_active: 'Y' })).http, 200);
+    assert.equal((await call('POST', '/hospital/get', { id: add.data.id })).data.health_region, null);
+  });
+
+  it('ดาวน์โหลดแม่แบบ (เปล่า / พร้อมรายชื่อปัจจุบัน) · STAFF ใช้ไม่ได้', async () => {
+    const E = await ExcelJS();
+    const dl = async (with_data: boolean, ck = cookie) => fetch(`${base}/hospital/template`, { method: 'POST', headers: { 'content-type': 'application/json', cookie: ck }, body: JSON.stringify({ with_data }) });
+    const empty = await dl(false);
+    assert.equal(empty.status, 200);
+    assert.match(empty.headers.get('content-type') ?? '', /spreadsheetml/);
+    const wb = new E.Workbook();
+    await wb.xlsx.load(Buffer.from(await empty.arrayBuffer()) as any);
+    assert.deepEqual(wb.worksheets.map((w) => w.name), ['รายชื่อ รพ.', 'คำอธิบาย']);
+    assert.equal(wb.worksheets[0]!.getRow(1).getCell(1).value, 'รหัสโรงพยาบาล');
+    assert.equal(wb.worksheets[0]!.getRow(2).getCell(1).value, null, 'แม่แบบเปล่ามีแต่หัวตาราง');
+    assert.equal(wb.worksheets[0]!.getRow(2).getCell(2).value, null);
+    const full = new E.Workbook();
+    await full.xlsx.load(Buffer.from(await (await dl(true)).arrayBuffer()) as any);
+    assert.ok(full.worksheets[0]!.getRow(2).getCell(1).value, 'มีรายชื่อปัจจุบัน');
+    const stf = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    assert.equal((await dl(false, stf)).status, 403);
+  });
+
+  it('ดูตัวอย่าง: แยก เพิ่มใหม่/อัปเดต/ไม่เปลี่ยน/ผิดพลาด ถูกต้อง · ไม่บันทึกอะไร', async () => {
+    const before = Number((await db('hospital').count({ n: '*' }).first() as any).n);
+    const file = await xlsxBase64([
+      ['รายการนำเข้า (บรรทัดหัวเรื่อง ให้ข้าม)'],
+      HEAD,
+      ['30001', 'รพ.ใหม่ หนึ่ง', 11, 'ใช้งาน'],
+      [30002, 'รพ.ใหม่ สอง (เลขล้วน)', '', ''], // ไม่มีเขต/สถานะ = ใช้งาน
+      ['20001', 'รพ.ทดสอบเขต (ชื่อใหม่)', 5, 'ปิด'], // อัปเดตของเดิม
+      ['11206', 'รพ.สงขลา', null, null], // เหมือนเดิม (ไม่มีเขต)
+      ['123456', 'รหัสยาวไป', 1, ''],
+      ['ABCDE', 'รหัสไม่ใช่เลข', 1, ''],
+      ['30003', '', 1, ''],
+      ['30004', 'เขตผิด', 99, ''],
+      ['30005', 'สถานะผิด', 1, 'บางที'],
+      ['30001', 'รหัสซ้ำในไฟล์', 1, ''],
+      [null, null, null, null], // แถวว่างข้าม
+    ]);
+    const r = await prev(file);
+    assert.equal(r.http, 200);
+    assert.deepEqual({ t: r.data.total, n: r.data.new_count, u: r.data.update_count, s: r.data.same_count, e: r.data.error_count }, { t: 10, n: 2, u: 1, s: 1, e: 6 });
+    assert.equal(r.data.rows[0].action, 'ERROR', 'แถวผิดพลาดขึ้นก่อน');
+    assert.ok(r.data.rows.find((x: any) => x.code === '30001' && x.action === 'ERROR').message.includes('ซ้ำ'));
+    assert.equal(r.data.rows.find((x: any) => x.code === '30002').code, '30002');
+    assert.equal(Number((await db('hospital').count({ n: '*' }).first() as any).n), before, 'preview ต้องไม่บันทึก');
+  });
+
+  it('ยืนยันนำเข้า: เพิ่ม/อัปเดตเฉพาะแถวที่ถูกต้อง · เติม 0 นำหน้า · บันทึกประวัติ · นำเข้าซ้ำ = ไม่เปลี่ยน', async () => {
+    const file = await xlsxBase64([
+      HEAD,
+      ['30001', 'รพ.ใหม่ หนึ่ง', 11, 'ใช้งาน'],
+      [1234, 'รพ.รหัสสั้น (เติม 0)', 2, ''],
+      ['20001', 'รพ.ทดสอบเขต (ชื่อใหม่)', 5, 'ปิด'],
+      ['ABCDE', 'ผิด', 1, ''],
+    ]);
+    const r = await commit(file);
+    assert.equal(r.http, 200);
+    assert.deepEqual(r.data, { total: 4, created: 2, updated: 1, unchanged: 0, skipped_errors: 1 });
+    const h = async (code: string) => db('hospital').where({ code }).first();
+    assert.equal((await h('30001')).health_region, 11);
+    assert.equal((await h('01234')).name, 'รพ.รหัสสั้น (เติม 0)');
+    const upd = await h('20001');
+    assert.equal(upd.name, 'รพ.ทดสอบเขต (ชื่อใหม่)');
+    assert.equal(upd.health_region, 5);
+    assert.ok(!upd.is_active);
+    assert.equal(await h('ABCDE'), undefined);
+    const batch = await db('import_batch').orderBy('id', 'desc').first();
+    assert.deepEqual({ t: batch.total_rows, i: batch.imported, s: batch.skipped }, { t: 4, i: 3, s: 1 });
+    const again = await commit(file);
+    assert.deepEqual(again.data, { total: 4, created: 0, updated: 0, unchanged: 3, skipped_errors: 1 });
+  });
+
+  it('ไฟล์ผิด: ไม่ใช่ Excel / ไม่มีหัวตาราง / ไม่มีข้อมูล / ใหญ่เกิน / ไม่ได้ส่งไฟล์ → 400 ข้อความชัดเจน · STAFF 403', async () => {
+    const notExcel = await prev(Buffer.from('นี่ไม่ใช่ excel').toString('base64'));
+    assert.equal(notExcel.http, 400);
+    assert.ok(notExcel.message!.includes('.xlsx'));
+    const noHead = await prev(await xlsxBase64([['a', 'b'], ['1', '2']]));
+    assert.equal(noHead.http, 400);
+    assert.ok(noHead.message!.includes('หัวตาราง'));
+    const noData = await prev(await xlsxBase64([HEAD]));
+    assert.equal(noData.http, 400);
+    assert.equal((await prev('A'.repeat(900_001))).http, 400);
+    assert.equal((await call('POST', '/hospital/import-preview', {})).http, 400);
+    const stf = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    assert.equal((await call('POST', '/hospital/import-commit', { file_base64: await xlsxBase64([HEAD, ['30009', 'x', 1, '']]) }, stf)).http, 403);
+    assert.equal(await db('hospital').where({ code: '30009' }).first(), undefined);
+  });
+
+  it('หัวตารางไม่ต้องเรียงตามแม่แบบ และอยู่ชีตแรกเท่านั้น · ชื่อ รพ. ที่ผ่านนำเข้าใช้ตรวจตอนสมัครได้ (โรงพยาบาล = รพ.)', async () => {
+    const file = await xlsxBase64([['ชื่อโรงพยาบาล', 'สถานะ', 'รหัสโรงพยาบาล'], ['รพ.สลับคอลัมน์', 'ใช้งาน', '30010']]);
+    assert.equal((await commit(file)).data.created, 1);
+    const { hospitalService } = await import('../src/pages/hospital');
+    assert.ok((await hospitalService.verify('30010', 'โรงพยาบาลสลับคอลัมน์')) > 0);
+    await assert.rejects(() => hospitalService.verify('30010', 'รพ.อื่น'));
+    await assert.rejects(() => hospitalService.verify('20001', 'รพ.ทดสอบเขต (ชื่อใหม่)'), /ไม่พบรหัส/); // ปิดใช้งานแล้ว สมัครไม่ได้
   });
 });
 

@@ -1,5 +1,5 @@
 /** HospitalTable — รายการโรงพยาบาล: ค้นหา รหัส/ชื่อ + ตาราง (แก้/ลบ) + แบ่งหน้า */
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { hospitalApi, type Hospital } from '../../api/hospitalApi';
 import { Button } from '../../components/Button';
@@ -30,6 +30,7 @@ export default function HospitalTable() {
   const columns: Column<Hospital>[] = [
     { header: 'รหัส', cell: (r) => r.code },
     { header: 'ชื่อโรงพยาบาล', cell: (r) => r.name, className: 'min-w-[8rem]' },
+    { header: 'เขตสุขภาพ', className: 'hidden md:table-cell', cell: (r) => (r.health_region ? `เขต ${r.health_region}` : '-') },
     {
       header: 'สถานะ',
       className: 'hidden sm:table-cell',
@@ -53,7 +54,7 @@ export default function HospitalTable() {
 
   return (
     <>
-      <PageTitle hint="ผู้ขอพิมพ์ชื่อ+รหัสเอง ระบบสร้างรายการให้อัตโนมัติ — ที่นี่ไว้แก้ชื่อที่พิมพ์ผิดหรือปิดรายการ">โรงพยาบาล</PageTitle>
+      <PageTitle hint="รายชื่อกลางที่ใช้ตรวจรหัส+ชื่อตอนสมาชิกลงทะเบียน — เพิ่มทีละรายการ หรือนำเข้าจาก Excel ทีเดียวทั้งไฟล์">โรงพยาบาล</PageTitle>
       <PageCard className="mb-4">
         <div className="grid gap-3 md:grid-cols-3">
           <FilterInput label="ค้นหา รหัส / ชื่อ" value={table.draft.q} onChange={(v) => table.setDraft('q', v)} onEnter={table.search} />
@@ -68,10 +69,16 @@ export default function HospitalTable() {
       <PageCard
         title="รายการโรงพยาบาล"
         actions={
-          <Button onClick={() => navigate('/hospital/add')}>
-            <Plus className="size-4" />
-            {MSG.add}
-          </Button>
+          <>
+            <Button variant="outline" onClick={() => navigate('/hospital/import')}>
+              <FileSpreadsheet className="size-4" />
+              นำเข้า Excel
+            </Button>
+            <Button onClick={() => navigate('/hospital/add')}>
+              <Plus className="size-4" />
+              {MSG.add}
+            </Button>
+          </>
         }
       >
         <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} onRowClick={(r) => navigate('/hospital/edit', { state: { id: r.id } })} />
