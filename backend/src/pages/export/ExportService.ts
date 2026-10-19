@@ -15,6 +15,7 @@ import { formatThaiDate } from '../../core/thaiDate';
 import { bangkokDate, fitWidths, ReportBook, type Cell, type ReportSheet } from '../../core/xlsxReport';
 import type { ChartSpec } from '../../core/xlsxCharts';
 import { MEASURE_LABEL, type WidgetConfig, type WidgetResult } from '../dashboard/Widget';
+import type { Period } from '../dashboard/Period';
 import type { DashboardService } from '../dashboard/DashboardService';
 import type { WidgetService } from '../dashboard/WidgetService';
 import { isSnapshot } from '../dashboard/WidgetEngine';
@@ -67,10 +68,13 @@ export class ExportService {
     const canAudit = actor.role === 'ADMIN' || actor.role === 'DEV';
     if (sections.has('audit') && !canAudit) throw badRequest('ส่งออกบันทึกการใช้งานได้เฉพาะผู้ดูแลระบบ');
 
-    const days = dto.days ?? (await getSetting<number>('dashboard_default_days'));
-    const since = new Date(now.getTime() - days * DAY);
-    const scope: ExportScope = dto.filters ? { filters: dto.filters as RequestFilters } : dto.scope === 'period' ? { sinceIso: since.toISOString() } : {};
-    const scopeText = dto.filters ? 'ตามตัวกรองที่เลือกในหน้าประวัติคำขอ' : dto.scope === 'period' ? `ส่งคำขอในช่วง ${days} วันล่าสุด (${thaiLong(since)} – ${thaiLong(now)})` : 'ทั้งหมดตั้งแต่เริ่มใช้ระบบ';
+    const period = await this.dashboard.resolve(dto, now);
+    const days = period.days;
+    const since = period.since;
+    const untilIso = period.until?.toISOString();
+    const scope: ExportScope = dto.filters ? { filters: dto.filters as RequestFilters } : dto.scope === 'period' ? { sinceIso: since.toISOString(), ...(untilIso ? { untilIso } : {}) } : {};
+    const spanText = period.custom ? `${thaiLong(since)} – ${thaiLong(new Date((period.until ?? now).getTime() - 1))}` : `${thaiLong(since)} – ${thaiLong(now)}`;
+    const scopeText = dto.filters ? 'ตามตัวกรองที่เลือกในหน้าประวัติคำขอ' : dto.scope === 'period' ? `ส่งคำขอในช่วง ${period.label} (${spanText})` : 'ทั้งหมดตั้งแต่เริ่มใช้ระบบ';
 
     const lookups = await this.repo.lookups();
     const lk = (type: string, code: string | null) => (code ? (lookups.find((l) => l.type === type && l.code === code)?.label ?? code) : null);
@@ -79,14 +83,14 @@ export class ExportService {
     const book = new ReportBook('รายงานระบบคิวขอเตียง');
     const meta = `สร้างเมื่อ ${thaiStamp(now)} · โดย ${actor.full_name}`;
     const colorCodes = lookups.filter((l) => l.type === 'COLOR').map((l) => l.code);
-    const ctx: Ctx = { book, lk, colorOf, meta, days, now, scope, scopeText, colorCodes, colorActive: new Set(colorCodes) };
+    const ctx: Ctx = { book, lk, colorOf, meta, days, period, now, scope, scopeText, colorCodes, colorActive: new Set(colorCodes) };
 
     if (sections.has('summary')) await this.summarySheet(ctx);
     if (sections.has('widgets')) await this.widgetSheets(ctx, dto);
     if (sections.has('requests')) await this.requestSheet(ctx);
     if (sections.has('events')) await this.eventSheet(ctx);
     if (sections.has('requesters')) await this.requesterSheet(ctx);
-    if (sections.has('audit')) await this.auditSheet(ctx, dto.scope === 'period' ? since.toISOString() : undefined);
+    if (sections.has('audit')) await this.auditSheet(ctx, dto.scope === 'period' ? since.toISOString() : undefined, dto.scope === 'period' ? untilIso : undefined);
 
     const stamp = bangkokDate(now.toISOString())!.toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
     const only = dto.sections.length === 1 ? ({ summary: 'สรุปภาพรวม', widgets: 'กราฟ', requests: 'รายการคำขอ', events: 'ประวัติเหตุการณ์', requesters: 'ผู้ขอ', audit: 'บันทึกการใช้งาน' } as const)[dto.sections[0]!] : 'ข้อมูล';
@@ -95,16 +99,16 @@ export class ExportService {
 
   // ====================== สรุปภาพรวม ======================
   private async summarySheet(c: Ctx) {
-    const sum = await this.dashboard.summary({ days: c.days }, c.now);
+    const sum = await this.dashboard.summary({}, c.now, c.period);
     const s = c.book.sheet('สรุปภาพรวม', { widths: [30, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14] });
-    s.banner('รายงานสรุปภาพรวม ระบบคิวขอเตียง', `ข้อมูลช่วง ${c.days} วันล่าสุด · ${c.meta}`);
+    s.banner('รายงานสรุปภาพรวม ระบบคิวขอเตียง', `ข้อมูลช่วง ${c.period.label} · ${c.meta}`);
     const q = sum.queue;
     const p = sum.period;
     s.kpis(4, [
       { label: 'รอคิวอยู่ (ขณะนี้)', value: q.waiting, note: 'ยังไม่ถูกเรียก' },
       { label: 'เรียกแล้ว รอยืนยัน', value: q.called, note: 'ขณะนี้', color: 'B45309' },
       { label: 'เรียกแล้วเกินเวลา', value: q.overdue, note: 'ควรโทรตาม', color: q.overdue > 0 ? 'B42318' : '64748B' },
-      { label: `ส่งคำขอ (${c.days} วัน)`, value: p.submitted, note: 'ทุกสถานะ' },
+      { label: `ส่งคำขอ (${c.period.label})`, value: p.submitted, note: 'ทุกสถานะ' },
       { label: 'ยืนยันส่งตัว', value: p.confirmed, note: `ในกลุ่มที่ส่งช่วงนี้`, color: '166534' },
       { label: 'ไม่ยืนยัน', value: p.declined, color: '475569' },
       { label: 'ยกเลิก', value: p.cancelled, color: '475569' },
@@ -153,7 +157,7 @@ export class ExportService {
     const noData = (n: number) => n === 0;
     const colorsHex = colorRows.map((x) => (x.code === NO_COLOR ? '94A3B8' : (c.colorOf(x.code) ?? '64748B')));
     if (!noData(colorRows.length)) s.chart({ kind: 'col', title: 'คิวที่รออยู่ ตามสี', catRef: t1.col(0), cats: colorRows.map((x) => (x.code === NO_COLOR ? 'ไม่ระบุสี' : (c.lk('COLOR', x.code) ?? x.code))), series: [{ name: 'รอคิว (ราย)', nameRef: t1.head(1), valRef: t1.col(1), values: colorRows.map((x) => x.count), pointColors: colorsHex }], anchor: { col: 0, row: 9, cols: 4, rows: 17 }, valueTitle: 'ราย' });
-    s.chart({ kind: 'doughnut', title: `ผลลัพธ์ของคำขอที่ส่งใน ${c.days} วัน`, catRef: t2.col(0), cats: statusRows.map((x) => x[0]), series: [{ name: 'ราย', nameRef: t2.head(1), valRef: t2.col(1), values: statusRows.map((x) => x[1]), pointColors: statusRows.map((x) => x[2]) }], anchor: { col: 4, row: 9, cols: 6, rows: 17 } });
+    s.chart({ kind: 'doughnut', title: `ผลลัพธ์ของคำขอที่ส่ง · ${c.period.label}`, catRef: t2.col(0), cats: statusRows.map((x) => x[0]), series: [{ name: 'ราย', nameRef: t2.head(1), valRef: t2.col(1), values: statusRows.map((x) => x[1]), pointColors: statusRows.map((x) => x[2]) }], anchor: { col: 4, row: 9, cols: 6, rows: 17 } });
     if (hospRows.length) s.chart({ kind: 'bar', stacked: true, title: 'โรงพยาบาลที่ส่งเคสมากสุด (แยกตามสี)', catRef: t4.col(0), cats: hospRows.map((h) => h.name), series: hospCols.map((x, i) => ({ name: x === NO_COLOR ? 'ไม่ระบุสี' : (c.lk('COLOR', x) ?? x), nameRef: t4.head(1 + i), valRef: t4.col(1 + i), values: hospRows.map((h) => h.by_color[x] ?? 0), color: x === NO_COLOR ? '94A3B8' : c.colorOf(x) })), anchor: { col: 0, row: 27, cols: 4, rows: 17 }, valueTitle: 'ราย' });
     if (subRows.length) s.chart({ kind: 'col', title: 'ประเภทสารเสพติด: ส่งเข้า เทียบ ยืนยัน', catRef: t3.col(0), cats: subRows.map((x) => (x.code === NO_COLOR ? 'ไม่ระบุ' : (c.lk('SUBSTANCE', x.code) ?? x.code))), series: [{ name: 'ส่งเข้า (ราย)', nameRef: t3.head(1), valRef: t3.col(1), values: subRows.map((x) => x.submitted), color: '2A78D6' }, { name: 'ยืนยัน (ราย)', nameRef: t3.head(2), valRef: t3.col(2), values: subRows.map((x) => x.confirmed), color: '1BAF7A' }], anchor: { col: 4, row: 27, cols: 6, rows: 17 }, valueTitle: 'ราย' });
     s.chart({ kind: 'line', title: 'คำขอรายวัน: ส่งเข้า เทียบ ยืนยันส่งตัว', catRef: t5.col(0), cats: sum.trend.map((x) => shortDay(x.date)), series: [{ name: 'ส่งคำขอ', nameRef: t5.head(1), valRef: t5.col(1), values: sum.trend.map((x) => x.submitted), color: '2A78D6' }, { name: 'ยืนยันส่งตัว', nameRef: t5.head(2), valRef: t5.col(2), values: sum.trend.map((x) => x.confirmed), color: '1BAF7A' }], anchor: { col: 0, row: 45, cols: 10, rows: 15 }, valueTitle: 'ราย', labels: false });
@@ -168,13 +172,13 @@ export class ExportService {
       if (dto.widget_ids.length && !list.length) throw notFound('ไม่พบกราฟที่เลือก (อาจถูกลบไปแล้ว)');
     }
     if (!list.length) return;
-    const { results } = await this.widgets.computeMany(list, c.days, c.now);
+    const { results } = await this.widgets.computeMany(list, c.period, c.now);
 
     const kpis = list.map((w, i) => ({ w, r: results[i]! })).filter((x) => x.w.chart === 'number');
     if (kpis.length) {
       const s = c.book.sheet('ตัวเลขสรุป', { widths: [44, 14, 12, 28] });
       s.banner('ตัวเลขสรุปจาก Dashboard', c.meta, 4);
-      const rows: Cell[][] = kpis.flatMap(({ w, r }) => r.columns.map((col, ci): Cell[] => [r.columns.length > 1 ? `${w.title} – ${col.label}` : w.title, r.rows[0]?.values[ci] ?? null, r.unit, periodText(w.measures, r.days)]));
+      const rows: Cell[][] = kpis.flatMap(({ w, r }) => r.columns.map((col, ci): Cell[] => [r.columns.length > 1 ? `${w.title} – ${col.label}` : w.title, r.rows[0]?.values[ci] ?? null, r.unit, periodText(w.measures, r.period_label)]));
       s.table(4, 1, ['รายการ', 'ค่า', 'หน่วย', 'ช่วงเวลา'], rows, { numFmt: { 1: '0.0' } });
     }
 
@@ -186,7 +190,7 @@ export class ExportService {
       const rows: Cell[][] = r.rows.map((row) => [row.label, ...row.values, ...(withTotal ? [row.total] : [])]);
       const wide = header.length > 6;
       const s = c.book.sheet(`กราฟ-${w.title || 'widget'}`, { widths: [32, ...header.slice(1).map(() => 16)] });
-      s.banner(w.title || 'กราฟ', `${periodText(w.measures, r.days)} · ${c.meta}`, Math.max(8, header.length));
+      s.banner(w.title || 'กราฟ', `${periodText(w.measures, r.period_label)} · ${c.meta}`, Math.max(8, header.length));
       const t = s.table(4, 1, header, rows, {
         numFmt: r.unit === 'วัน' ? Object.fromEntries(r.columns.map((_, ci) => [ci + 1, '0.0'])) : undefined,
         style: (ri, ci) => (ci === 0 && r.rows[ri]?.color ? { fill: hex(r.rows[ri]!.color)!, color: 'FFFFFF', bold: true } : undefined),
@@ -279,8 +283,8 @@ export class ExportService {
   }
 
   // ====================== บันทึกการใช้งาน ======================
-  private async auditSheet(c: Ctx, sinceIso: string | undefined) {
-    const rows = await this.repo.audit(sinceIso);
+  private async auditSheet(c: Ctx, sinceIso: string | undefined, untilIso?: string) {
+    const rows = await this.repo.audit(sinceIso, untilIso);
     const header = ['เวลา', 'ผู้ใช้', 'หน้า', 'การกระทำ', 'ผล (HTTP)', 'Path', 'IP', 'รายละเอียดที่บันทึก'];
     const data: Cell[][] = rows.map((r) => [bangkokDate(r.created_at), r.username, r.page, r.action, r.status_code, r.path, r.ip, r.detail]);
     const s = c.book.sheet('บันทึกการใช้งาน', { widths: [20, 18, 14, 16, 11, 34, 16, 60], tab: '64748B' });
@@ -300,6 +304,7 @@ type Ctx = {
   colorOf: (code: string | null) => string | undefined;
   meta: string;
   days: number;
+  period: Period;
   now: Date;
   scope: ExportScope;
   scopeText: string;
@@ -307,7 +312,7 @@ type Ctx = {
   colorActive: Set<string>;
 };
 
-const periodText = (measures: readonly (keyof typeof MEASURE_LABEL)[], days: number) => (isSnapshot(measures) ? 'ขณะนี้ (ไม่ขึ้นกับช่วงเวลา)' : `${days} วันล่าสุด`);
+const periodText = (measures: readonly (keyof typeof MEASURE_LABEL)[], label: string) => (isSnapshot(measures) ? 'ขณะนี้ (ไม่ขึ้นกับช่วงเวลา)' : label);
 
 /** กราฟของ widget → กราฟ Excel รูปแบบเดียวกัน (ตัวเลข/ตารางไม่มีกราฟ) */
 function widgetChart(w: WidgetConfig, r: WidgetResult, t: ReturnType<ReportSheet['table']>, anchor: ChartSpec['anchor']): Omit<ChartSpec, 'sheet'> | null {

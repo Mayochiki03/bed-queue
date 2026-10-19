@@ -9,6 +9,7 @@ export type SubstanceStat = { code: string; submitted: number; confirmed: number
 
 export type DashboardSummary = {
   days: number;
+  period_label: string;
   /** สถานะปัจจุบันของคิว (ไม่ขึ้นกับช่วงเวลา) */
   queue: { waiting: number; called: number; need_date: number; overdue: number; by_color: ColorQueue[] };
   /** ผลลัพธ์ของคำขอที่ส่งเข้ามาในช่วงเวลา */

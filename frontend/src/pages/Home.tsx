@@ -13,10 +13,10 @@ import { usePopup } from '../components/Popup';
 import { Spinner } from '../components/Spinner';
 import { WidgetBuilder, BLANK } from '../components/widgets/WidgetBuilder';
 import { WidgetCard } from '../components/widgets/WidgetCard';
-import { cn } from '../lib/cn';
+import { PeriodPicker } from '../components/PeriodPicker';
+import { isValid, toParams, type PeriodChoice } from '../lib/period';
 import { hasRole, useSession } from '../lib/session';
 
-const RANGES = [7, 30, 90];
 
 const toInput = (w: WidgetWithResult, copy = false): WidgetSaveInput => ({
   ...(copy ? {} : { id: w.id }),
@@ -37,7 +37,7 @@ export default function Home() {
   const popup = usePopup();
   const isAdmin = hasRole(user?.role, 'ADMIN');
   const [ui, setUi] = useState<UiSettings | null>(null);
-  const [days, setDays] = useState<number | null>(null);
+  const [period, setPeriod] = useState<PeriodChoice | null>(null);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [widgets, setWidgets] = useState<WidgetWithResult[] | null>(null);
   const [error, setError] = useState('');
@@ -54,19 +54,19 @@ export default function Home() {
     void settingApi.ui().then((r) => {
       if (r.ok && r.data) {
         setUi(r.data);
-        setDays(r.data.dashboard_default_days);
+        setPeriod({ kind: 'days', days: r.data.dashboard_default_days });
       } else setError(r.message);
     });
   }, []);
 
-  const loadSummary = useCallback(async (d: number) => {
-    const r = await dashboardApi.summary(d);
+  const loadSummary = useCallback(async (c: PeriodChoice) => {
+    const r = await dashboardApi.summary(toParams(c));
     if (r.ok && r.data) setSummary(r.data);
     else setError(r.message);
   }, []);
   const loadWidgets = useCallback(
-    async (d: number, hidden: boolean) => {
-      const r = await dashboardApi.widgets(d, hidden);
+    async (c: PeriodChoice, hidden: boolean) => {
+      const r = await dashboardApi.widgets(toParams(c), hidden);
       if (r.ok && r.data) {
         setWidgets(r.data.widgets);
         setError('');
@@ -76,17 +76,17 @@ export default function Home() {
   );
 
   useEffect(() => {
-    if (days === null) return;
-    void loadSummary(days);
+    if (period === null || !isValid(period)) return; // กำหนดเองที่ยังกรอกไม่ครบ/ไม่ถูก ไม่ยิง API
+    void loadSummary(period);
     // ระหว่างจัดวางที่ยังไม่บันทึก ไม่โหลดทับ draft
-    if (!(edit && dirty)) void loadWidgets(days, edit && isAdmin);
+    if (!(edit && dirty)) void loadWidgets(period!, edit && isAdmin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, edit]);
+  }, [period, edit]);
 
   if (error && !widgets) return <p role="alert" className="text-danger">{error}</p>;
-  if (!ui || !summary || !widgets || days === null) return <Spinner />;
+  if (!ui || !summary || !widgets || period === null) return <Spinner />;
   const q = summary.queue;
-  const range = RANGES.includes(days) ? RANGES : [...RANGES, days].sort((a, b) => a - b);
+  const extraDays = period.kind === 'days' ? [period.days] : [];
 
   const update = (next: WidgetWithResult[]) => {
     setWidgets(next);
@@ -122,7 +122,7 @@ export default function Home() {
     if (dirty && !(await popup.confirm({ message: 'ยังไม่ได้บันทึกการจัดวาง ต้องการทิ้งการเปลี่ยนแปลงหรือไม่?', danger: true, confirmText: 'ทิ้ง' }))) return;
     setDirty(false);
     setEdit(false);
-    await loadWidgets(days!, false);
+    await loadWidgets(period!, false);
   }
   async function saveLayout() {
     if (!(await popup.confirm({ title: 'บันทึกการจัดวาง', message: 'การจัดวางนี้ใช้ร่วมกันทุกคนที่เปิด Dashboard ต้องการบันทึกหรือไม่?', confirmText: 'บันทึก' }))) return;
@@ -133,7 +133,7 @@ export default function Home() {
     popup.success('บันทึกการจัดวางแล้ว');
     setDirty(false);
     setEdit(false);
-    await loadWidgets(days!, false);
+    await loadWidgets(period!, false);
   }
   async function remove(w: WidgetWithResult) {
     if (!(await popup.confirm({ message: `ลบ widget "${w.title}" ?\nการลบมีผลกับทุกคน`, danger: true, confirmText: 'ลบ' }))) return;
@@ -145,7 +145,7 @@ export default function Home() {
     setBuilder(null);
     // บันทึก widget ลงฐานข้อมูลแล้ว → โหลดใหม่ (ถ้ามีการจัดวางค้างอยู่ ให้ผู้ใช้เห็นลำดับล่าสุดจากเซิร์ฟเวอร์)
     setDirty(false);
-    await loadWidgets(days!, edit && isAdmin);
+    await loadWidgets(period!, edit && isAdmin);
   }
 
   return (
@@ -157,13 +157,7 @@ export default function Home() {
             ขณะนี้มีคิวรอ {q.waiting} ราย · เรียกแล้วรอยืนยัน {q.called} ราย{q.need_date > 0 ? ` · รอนัดวัน ${q.need_date} ราย` : ''}
           </p>
         </div>
-        <div role="group" aria-label="ช่วงเวลา" className="flex rounded-full bg-white/15 p-[3px]">
-          {range.map((d) => (
-            <button key={d} type="button" aria-pressed={d === days} onClick={() => setDays(d)} className={cn('rounded-full px-3.5 py-1.5 text-sm', d === days ? 'bg-white font-semibold text-primary-ink' : 'text-white hover:bg-white/10')}>
-              {d} วัน
-            </button>
-          ))}
-        </div>
+        <PeriodPicker value={period} onChange={setPeriod} extraDays={extraDays} />
       </section>
 
       {q.overdue > 0 && (
@@ -176,7 +170,7 @@ export default function Home() {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">{edit ? 'โหมดจัดวาง: ลากการ์ดเพื่อสลับตำแหน่ง หรือใช้ปุ่มลูกศร' : `ข้อมูลนับจากช่วง ${days} วันล่าสุด`}</p>
+        <p className="text-sm text-muted-foreground">{edit ? 'โหมดจัดวาง: ลากการ์ดเพื่อสลับตำแหน่ง หรือใช้ปุ่มลูกศร' : `ข้อมูลนับจากช่วง: ${summary.period_label}`}</p>
         <div className="flex flex-wrap gap-2">
           {!edit && (
             <Button variant="outline" size="sm" onClick={() => setExporting(true)}>
@@ -247,8 +241,8 @@ export default function Home() {
         </section>
       )}
 
-      <ExportDialog open={exporting} onClose={() => setExporting(false)} initial={['summary', 'widgets']} days={days} />
-      {builder && <WidgetBuilder open initial={builder} dashboardDays={days} onClose={() => setBuilder(null)} onSaved={() => void afterBuilderSaved()} />}
+      <ExportDialog open={exporting} onClose={() => setExporting(false)} initial={['summary', 'widgets']} period={period} />
+      {builder && <WidgetBuilder open initial={builder} dashboardPeriod={period} onClose={() => setBuilder(null)} onSaved={() => void afterBuilderSaved()} />}
     </div>
   );
 }

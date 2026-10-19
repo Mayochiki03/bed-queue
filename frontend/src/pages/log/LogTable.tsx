@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { logApi, type LogRow } from '../../api/logApi';
 import { Button } from '../../components/Button';
 import { DataTable, type Column } from '../../components/DataTable';
+import { DatePicker } from '../../components/DatePicker';
 import { ExportDialog } from '../../components/ExportDialog';
 import { Modal } from '../../components/Modal';
 import { FilterInput, FilterSelect } from '../../components/Fields';
@@ -59,13 +60,13 @@ export default function LogTable() {
             <label htmlFor="log_from" className="text-sm font-medium">
               ตั้งแต่วันที่
             </label>
-            <input id="log_from" type="date" className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" value={table.draft.date_from} onChange={(e) => table.setDraft('date_from', e.target.value)} />
+            <DatePicker id="log_from" placeholder="ทุกวัน" value={table.draft.date_from} onChange={(v) => table.setDraft('date_from', v)} />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="log_to" className="text-sm font-medium">
               ถึงวันที่
             </label>
-            <input id="log_to" type="date" className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" value={table.draft.date_to} onChange={(e) => table.setDraft('date_to', e.target.value)} />
+            <DatePicker id="log_to" placeholder="ทุกวัน" value={table.draft.date_to} onChange={(v) => table.setDraft('date_to', v)} />
           </div>
         </div>
         <div className="mt-3 flex justify-center gap-2">

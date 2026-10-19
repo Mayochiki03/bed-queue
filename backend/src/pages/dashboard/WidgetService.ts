@@ -5,23 +5,27 @@
 import { badRequest, notFound } from '../../core/http';
 import { getSetting } from '../../core/settings';
 import { checkCompat, type WidgetConfig, type WidgetRecord, type WidgetResult, type WidgetWithResult } from './Widget';
+import { dayKeys, lastDays, resolvePeriod, type Period, type PeriodInput } from './Period';
 import type { WidgetSaveDto } from './WidgetDto';
 import { computeWidget, type EngineContext } from './WidgetEngine';
 import type { WidgetRepository } from './WidgetRepository';
 
-const DAY = 86_400_000;
 const MAX_WIDGETS = 60;
 
 export class WidgetService {
   constructor(private repo: WidgetRepository) {}
 
-  /** ตัวช่วยคำนวณหลาย widget พร้อมกัน — ดึงแถวจากฐานข้อมูลครั้งเดียวด้วยช่วงเวลายาวที่สุด */
-  async computeMany(widgets: WidgetConfig[], days: number | undefined, now: Date): Promise<{ results: WidgetResult[]; days: number }> {
-    const baseDays = days ?? (await getSetting<number>('dashboard_default_days'));
-    const effective = widgets.map((w) => w.period_days ?? baseDays);
-    const maxDays = Math.max(1, ...effective);
+  /** แปลงช่วงเวลาที่ผู้ใช้เลือก (N วัน / วันนี้ / เมื่อวาน / ทั้งหมด / กำหนดวันเอง) เป็น Period */
+  async resolve(input: PeriodInput, now: Date): Promise<Period> {
+    return resolvePeriod(input, now, await getSetting<number>('dashboard_default_days'), () => this.repo.earliestSubmitted());
+  }
+
+  /** ตัวช่วยคำนวณหลาย widget พร้อมกัน — ดึงแถวจากฐานข้อมูลครั้งเดียวด้วยช่วงที่เริ่มเร็วที่สุด (widget ที่ตั้งช่วงของตัวเองใช้ "N วันล่าสุด") */
+  async computeMany(widgets: WidgetConfig[], period: Period, now: Date): Promise<{ results: WidgetResult[]; period: Period }> {
+    const periods = widgets.map((w) => (w.period_days ? lastDays(w.period_days, now) : period));
+    const earliest = new Date(Math.min(period.since.getTime(), ...periods.map((p) => p.since.getTime())));
     const [rows, colors, substances, reasons, hospitalNames, timeoutHours] = await Promise.all([
-      this.repo.rowsSince(new Date(now.getTime() - maxDays * DAY).toISOString()),
+      this.repo.rowsSince(earliest.toISOString()),
       this.repo.dims('COLOR'),
       this.repo.dims('SUBSTANCE'),
       this.repo.dims('REASON'),
@@ -29,7 +33,11 @@ export class WidgetService {
       getSetting<number>('confirm_timeout_hours'),
     ]);
     const base: Omit<EngineContext, 'days'> = { now, timeoutHours, colors, substances, reasons, hospitalNames };
-    return { results: widgets.map((w, i) => computeWidget(w, rows, { ...base, days: effective[i]! })), days: baseDays };
+    const results = widgets.map((w, i) => {
+      const p = periods[i]!;
+      return computeWidget(w, rows, { ...base, days: p.days, periodLabel: p.label, ...(p.custom ? { since: p.since, until: p.until, dayKeys: dayKeys(p) } : {}) });
+    });
+    return { results, period };
   }
 
   private validate(c: Pick<WidgetConfig, 'measures' | 'group_by' | 'split_by' | 'chart'>) {
@@ -38,12 +46,12 @@ export class WidgetService {
   }
 
   /** includeHidden: ผู้ดูแลที่อยู่ในโหมดจัดหน้า ต้องเห็น widget ที่ซ่อนอยู่ด้วย (ไม่คำนวณข้อมูลให้ตัวที่ซ่อน) */
-  async data(days: number | undefined, includeHidden: boolean, now = new Date()): Promise<{ days: number; widgets: WidgetWithResult[] }> {
+  async data(input: PeriodInput, includeHidden: boolean, now = new Date()): Promise<{ days: number; period_label: string; from_date: string; to_date: string; widgets: WidgetWithResult[] }> {
     const all = await this.repo.list(!includeHidden);
     const active = all.filter((w) => w.is_active);
-    const { results, days: used } = await this.computeMany(active, days, now);
+    const { results, period } = await this.computeMany(active, await this.resolve(input, now), now);
     const byId = new Map(active.map((w, i) => [w.id, results[i]!]));
-    return { days: used, widgets: all.map((w) => ({ ...w, result: byId.get(w.id) ?? null })) };
+    return { days: period.days, period_label: period.label, from_date: period.from_date, to_date: period.to_date, widgets: all.map((w) => ({ ...w, result: byId.get(w.id) ?? null })) };
   }
 
   /** widget ที่จะส่งออก: ระบุ id ได้ ไม่ระบุ = ทุกอัน ที่แสดงอยู่ */
@@ -56,9 +64,9 @@ export class WidgetService {
     return this.repo.list(false);
   }
 
-  async preview(config: WidgetConfig, days: number | undefined, now = new Date()): Promise<WidgetResult> {
+  async preview(config: WidgetConfig, input: PeriodInput, now = new Date()): Promise<WidgetResult> {
     this.validate(config);
-    return (await this.computeMany([config], days, now)).results[0]!;
+    return (await this.computeMany([config], await this.resolve(input, now), now)).results[0]!;
   }
 
   async save(dto: WidgetSaveDto, userId: number): Promise<{ id: number }> {

@@ -9,6 +9,7 @@ import { requestApi, STATUS_OPTIONS, type RequestBase } from '../../api/requestA
 import { Button } from '../../components/Button';
 import { ColorChip } from '../../components/ColorChip';
 import { DataTable, type Column } from '../../components/DataTable';
+import { DatePicker } from '../../components/DatePicker';
 import { ExportDialog } from '../../components/ExportDialog';
 import { FilterInput, FilterSelect } from '../../components/Fields';
 import { PageCard, PageTitle } from '../../components/PageCard';
@@ -68,13 +69,13 @@ export default function HistoryPage() {
             <label htmlFor="date_from" className="text-sm font-medium">
               ส่งตั้งแต่วันที่
             </label>
-            <input id="date_from" type="date" className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" value={table.draft.date_from} onChange={(e) => table.setDraft('date_from', e.target.value)} />
+            <DatePicker id="date_from" placeholder="ทุกวัน" value={table.draft.date_from} onChange={(v) => table.setDraft('date_from', v)} />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="date_to" className="text-sm font-medium">
               ถึงวันที่
             </label>
-            <input id="date_to" type="date" className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" value={table.draft.date_to} onChange={(e) => table.setDraft('date_to', e.target.value)} />
+            <DatePicker id="date_to" placeholder="ทุกวัน" value={table.draft.date_to} onChange={(v) => table.setDraft('date_to', v)} />
           </div>
         </div>
         <div className="mt-3 flex justify-center gap-2">

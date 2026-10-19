@@ -1,5 +1,6 @@
-/** DashboardDto.ts — ข้อมูลที่รับเข้าของ Dashboard: ช่วงเวลา (วัน) 1-3650 */
+/** DashboardDto.ts — ข้อมูลที่รับเข้าของ Dashboard: ช่วงเวลา (N วันล่าสุด / วันนี้ / เมื่อวาน / ทั้งหมด / กำหนดวันเอง) */
 import { z } from 'zod';
+import { periodShape, refinePeriod } from './Period';
 
-export const dashboardDto = z.object({ days: z.coerce.number().int().min(1, 'ช่วงเวลาต้องอย่างน้อย 1 วัน').max(3650, 'ช่วงเวลาเกิน 3650 วัน').optional() });
+export const dashboardDto = z.object(periodShape).superRefine(refinePeriod);
 export type DashboardDto = z.infer<typeof dashboardDto>;

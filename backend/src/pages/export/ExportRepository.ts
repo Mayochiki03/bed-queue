@@ -6,13 +6,14 @@ import { applyRequestFilters, type RequestFilters } from '../request/RequestRepo
 
 const MAX_ROWS = 100_000;
 
-export type ExportScope = { filters?: RequestFilters; sinceIso?: string };
+export type ExportScope = { filters?: RequestFilters; sinceIso?: string; untilIso?: string };
 
 const emptyFilters: RequestFilters = { q: '', statuses: [], color_code: '', hospital_id: undefined, date_from: undefined, date_to: undefined };
 
 function scoped(base: Knex.QueryBuilder, s: ExportScope) {
   applyRequestFilters(base, s.filters ?? emptyFilters);
   if (s.sinceIso) base.where('r.submitted_at', '>=', s.sinceIso);
+  if (s.untilIso) base.where('r.submitted_at', '<', s.untilIso);
   return base;
 }
 
@@ -125,9 +126,10 @@ export class ExportRepository {
     };
   }
 
-  audit(sinceIso: string | undefined) {
+  audit(sinceIso: string | undefined, untilIso?: string) {
     const q = db('audit_logs').orderBy('id', 'desc').limit(MAX_ROWS);
     if (sinceIso) q.where('created_at', '>=', sinceIso);
+    if (untilIso) q.where('created_at', '<', untilIso);
     return q.select('created_at', 'username', 'page', 'action', 'status_code', 'path', 'ip', 'detail') as Promise<
       { created_at: string; username: string | null; page: string; action: string; status_code: number; path: string; ip: string | null; detail: string | null }[]
     >;

@@ -41,6 +41,12 @@ export type EngineContext = {
   now: Date;
   /** จำนวนวันของช่วงเวลาที่ใช้ */
   days: number;
+  /** ช่วงเวลาแบบกำหนดวัน (ไม่ใส่ = N วันล่าสุดนับถึง now ตามเดิม): since รวม · until ไม่รวม (null = ถึงตอนนี้) */
+  since?: Date;
+  until?: Date | null;
+  /** วัน (YYYY-MM-DD เวลาไทย) ทุกวันในช่วง ใช้ทำแกนเวลา */
+  dayKeys?: string[];
+  periodLabel?: string;
   timeoutHours: number;
   /** ข้อมูลหลัก เรียงตามลำดับแล้ว (รวมค่าที่ปิดใช้งานเพื่อแปลงชื่อประวัติเก่า) */
   colors: Dim[];
@@ -90,19 +96,23 @@ function timeLabel(key: string, g: TimeGroup): string {
 type Item = { row: EngineRow; date: string; value: number };
 
 /** แถวที่เข้าเงื่อนไขของ "ค่าที่วัด" นี้ พร้อมวันที่ที่ใช้จัดกลุ่มตามเวลา */
-function select(m: Measure, rows: EngineRow[], ctx: EngineContext, sinceMs: number): Item[] {
+function select(m: Measure, rows: EngineRow[], ctx: EngineContext, sinceMs: number, untilMs: number): Item[] {
   const out: Item[] = [];
+  const inRange = (iso: string) => {
+    const t = new Date(iso).getTime();
+    return t >= sinceMs && t < untilMs;
+  };
   const timeoutMs = ctx.timeoutHours * 3_600_000;
   for (const r of rows) {
     switch (m) {
       case 'submitted':
-        if (new Date(r.submitted_at).getTime() >= sinceMs) out.push({ row: r, date: r.submitted_at, value: 1 });
+        if (inRange(r.submitted_at)) out.push({ row: r, date: r.submitted_at, value: 1 });
         break;
       case 'confirmed':
       case 'declined':
       case 'cancelled': {
         const st = m === 'confirmed' ? 'CONFIRMED' : m === 'declined' ? 'DECLINED' : 'CANCELLED';
-        if (r.status === st && r.resolved_at && new Date(r.resolved_at).getTime() >= sinceMs) out.push({ row: r, date: r.resolved_at, value: 1 });
+        if (r.status === st && r.resolved_at && inRange(r.resolved_at)) out.push({ row: r, date: r.resolved_at, value: 1 });
         break;
       }
       case 'waiting':
@@ -116,7 +126,7 @@ function select(m: Measure, rows: EngineRow[], ctx: EngineContext, sinceMs: numb
         break;
       default: {
         // avg_days / max_days / min_days
-        if (r.status === 'CONFIRMED' && r.resolved_at && new Date(r.resolved_at).getTime() >= sinceMs) {
+        if (r.status === 'CONFIRMED' && r.resolved_at && inRange(r.resolved_at)) {
           const days = Math.max(0, (new Date(r.resolved_at).getTime() - new Date(r.submitted_at).getTime()) / DAY);
           out.push({ row: r, date: r.resolved_at, value: days });
         }
@@ -166,13 +176,17 @@ function aggregate(measure: Measure, vals: number[] | undefined): number | null 
 }
 
 export function computeWidget(cfg: Pick<WidgetConfig, 'measures' | 'group_by' | 'split_by' | 'filters' | 'row_limit'>, rows: EngineRow[], ctx: EngineContext): WidgetResult {
-  const sinceMs = ctx.now.getTime() - ctx.days * DAY;
+  const sinceMs = ctx.since ? ctx.since.getTime() : ctx.now.getTime() - ctx.days * DAY;
+  const untilMs = ctx.until ? ctx.until.getTime() : Number.POSITIVE_INFINITY;
   const unit = unitOf(cfg.measures[0]!);
-  const timeGroup = (TIME_GROUPS as readonly string[]).includes(cfg.group_by) ? (cfg.group_by as TimeGroup) : null;
+  const dayList = ctx.dayKeys ?? Array.from({ length: ctx.days }, (_, i) => thaiDate(new Date(ctx.now.getTime() - (ctx.days - 1 - i) * DAY)));
+  // ช่วงยาวมากแกนรายวันอ่านไม่ออก — ปรับเป็นรายสัปดาห์/รายเดือนให้อัตโนมัติ
+  let timeGroup = (TIME_GROUPS as readonly string[]).includes(cfg.group_by) ? (cfg.group_by as TimeGroup) : null;
+  if (timeGroup === 'day' && dayList.length > 120) timeGroup = 'week';
+  if (timeGroup === 'week' && dayList.length > 900) timeGroup = 'month';
   const splitting = cfg.split_by !== 'none' && cfg.group_by !== 'none';
 
   // ช่วงเวลา → วัน/ที่เก็บ (ใช้กับกลุ่มตามเวลา)
-  const dayList = Array.from({ length: ctx.days }, (_, i) => thaiDate(new Date(ctx.now.getTime() - (ctx.days - 1 - i) * DAY)));
   const buckets: string[] = [];
   const dayToBucket = new Map<string, string>();
   if (timeGroup) {
@@ -183,7 +197,7 @@ export function computeWidget(cfg: Pick<WidgetConfig, 'measures' | 'group_by' | 
     }
   }
 
-  const items = cfg.measures.map((m) => ({ m, list: select(m, rows, ctx, sinceMs).filter((i) => passes(i.row, cfg.filters)) }));
+  const items = cfg.measures.map((m) => ({ m, list: select(m, rows, ctx, sinceMs, untilMs).filter((i) => passes(i.row, cfg.filters)) }));
 
   // รวมค่า: groupKey -> colKey -> ค่าดิบ
   const cells = new Map<string, Map<string, number[]>>();
@@ -254,7 +268,7 @@ export function computeWidget(cfg: Pick<WidgetConfig, 'measures' | 'group_by' | 
     out.splice(cfg.row_limit);
   }
 
-  return { unit, days: ctx.days, column_mode: splitting ? 'split' : 'series', time_group: timeGroup, columns, rows: out };
+  return { unit, days: ctx.days, period_label: ctx.periodLabel ?? `${ctx.days} วันล่าสุด`, column_mode: splitting ? 'split' : 'series', time_group: timeGroup, columns, rows: out };
 }
 
 /** ค่าที่วัดแบบ "ขณะนี้" ทุกตัวไหม (หน้าจอแสดงคำว่า "ขณะนี้" แทน "N วันล่าสุด") */

@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import { idField } from '../../core/http';
 import { STATUSES } from '../request/Request';
+import { periodShape, refinePeriod } from '../dashboard/Period';
 import { widgetConfigShape } from '../dashboard/WidgetDto';
 
 export const SECTIONS = ['summary', 'widgets', 'requests', 'events', 'requesters', 'audit'] as const;
@@ -10,8 +11,8 @@ export type Section = (typeof SECTIONS)[number];
 export const exportBuildDto = z.object({
   /** เลือกว่าจะเอาข้อมูลชุดไหนบ้าง (แต่ละชุดคือชีตของ Excel) */
   sections: z.array(z.enum(SECTIONS)).min(1, 'เลือกข้อมูลที่จะส่งออกอย่างน้อย 1 อย่าง'),
-  /** ช่วงเวลา (วันล่าสุด) ของสรุป/กราฟ — ไม่ใส่ = ค่าเริ่มต้นของ Dashboard */
-  days: z.coerce.number().int().min(1, 'ช่วงเวลาต้องอย่างน้อย 1 วัน').max(3650).optional(),
+  /** ช่วงเวลาของสรุป/กราฟ — เหมือนตัวกรองของ Dashboard: days | preset (today/yesterday/all) | date_from[+date_to]; ไม่ใส่ = ค่าเริ่มต้นของ Dashboard */
+  ...periodShape,
   /** ขอบเขตของ คำขอ/เหตุการณ์/log: period = เฉพาะช่วง days วัน · all = ทั้งหมดตั้งแต่เริ่มใช้ระบบ */
   scope: z.enum(['period', 'all']).default('period'),
   /** กราฟที่จะส่งออก (ว่าง = ทุกอันที่แสดงอยู่) */
@@ -29,5 +30,5 @@ export const exportBuildDto = z.object({
       date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     })
     .optional(),
-});
+}).superRefine(refinePeriod);
 export type ExportBuildDto = z.infer<typeof exportBuildDto>;

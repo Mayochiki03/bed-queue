@@ -400,6 +400,21 @@ describe('dashboard (สรุปตัวเลข)', () => {
     const week = await dashboardService.summary({ days: 7 }, NOW);
     assert.equal(week.trend.length, 7);
     assert.equal(week.period.submitted, 9); // ส่งภายใน 7 วัน (ขอบ 7 วันพอดีนับรวม · ago 8 และ ago 60 ตกช่วง)
+
+    // ช่วงเวลาแบบละเอียด: เมื่อวาน / กำหนดวันเอง / ทั้งหมด / วันนี้ (ไม่มีคำขอ)
+    const yest = await dashboardService.summary({ preset: 'yesterday' }, NOW);
+    assert.equal(yest.period_label, 'เมื่อวาน');
+    assert.equal(yest.period.submitted, 1);
+    assert.equal(yest.trend.length, 1);
+    const today = await dashboardService.summary({ preset: 'today' }, NOW);
+    assert.equal(today.period.submitted, 0);
+    const custom = await dashboardService.summary({ date_from: '2026-10-10', date_to: '2026-10-12' }, NOW);
+    assert.equal(custom.period.submitted, 4);
+    assert.equal(custom.trend.length, 3);
+    assert.equal(custom.trend[0]!.date, '2026-10-10');
+    const all = await dashboardService.summary({ preset: 'all' }, NOW);
+    assert.equal(all.period.submitted, 11); // รวมแถวเมื่อ 60 วันก่อน
+    assert.equal(all.trend.length, 61);
   });
 
   it('API: STAFF เรียกได้ · ช่วงเวลาผิด → 400 · ไม่ส่ง days ใช้ค่าตั้งค่า', async () => {
@@ -409,6 +424,8 @@ describe('dashboard (สรุปตัวเลข)', () => {
     assert.ok(Array.isArray(r.data.trend) && r.data.trend.length === r.data.days);
     assert.equal((await call('POST', '/dashboard/summary', { days: 0 })).http, 400);
     assert.equal((await call('POST', '/dashboard/summary', { days: 99999 })).http, 400);
+    assert.equal((await call('POST', '/dashboard/summary', { date_from: '2026-10-12', date_to: '2026-10-10' })).http, 400); // วันสิ้นสุดก่อนวันเริ่ม
+    assert.equal((await call('POST', '/dashboard/summary', { preset: 'yesterday' })).http, 200);
     assert.equal((await call('POST', '/dashboard/summary', {}, false)).http, 401);
     await db('bed_request').delete();
   });
@@ -448,7 +465,7 @@ describe('dashboard widget (สร้าง/จัดวาง/คำนวณ/�
       row({ hospital_id: h2, color_code: null, substance_code: 'ICE', status: 'DECLINED', submitted_at: ago(7), resolved_at: ago(6) }),
     ]);
     const { widgetService } = await import('../src/pages/dashboard');
-    const P = (o: Record<string, unknown>, days = 30) => widgetService.preview(cfg(o) as any, days, NOW);
+    const P = (o: Record<string, unknown>, days = 30) => widgetService.preview(cfg(o) as any, { days }, NOW);
 
     // ตัวเลขเดียว
     const waiting = await P({ measures: ['waiting'] });

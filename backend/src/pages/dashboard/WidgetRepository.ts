@@ -129,6 +129,12 @@ export class WidgetRepository {
       .select(ENGINE_COLS);
   }
 
+  /** เวลาส่งคำขอแรกสุด (ใช้กับตัวเลือก "ทั้งหมดตั้งแต่เริ่มใช้ระบบ") */
+  async earliestSubmitted(): Promise<string | null> {
+    const r = (await db('bed_request').min({ m: 'submitted_at' }).first()) as { m: string | null } | undefined;
+    return r?.m ?? null;
+  }
+
   async dims(type: 'COLOR' | 'SUBSTANCE' | 'REASON'): Promise<Dim[]> {
     const rows = (await db('lookup').where({ type }).orderBy('sort_order').orderBy('id')) as { code: string; label: string; color: string | null; is_active: number | boolean }[];
     return rows.map((r) => ({ key: r.code, label: r.label, color: r.color, active: !!r.is_active }));

@@ -48,6 +48,23 @@ export default function MemberTable() {
     } else popup.error(res.message);
   }
 
+  const actions = (r: MemberRow) => (
+    <>
+          {r.approval_status !== 'APPROVED' && (
+            <Button size="sm" variant="outline" className="whitespace-nowrap" disabled={busy === r.id} onClick={() => void approve(r)}>
+              <Check className="size-4" />
+              อนุมัติ
+            </Button>
+          )}
+          {r.approval_status !== 'REJECTED' && (
+            <Button size="sm" variant="ghost" className="whitespace-nowrap text-danger" disabled={busy === r.id} onClick={() => void reject(r)}>
+              <X className="size-4" />
+              ไม่อนุมัติ
+            </Button>
+          )}
+    </>
+  );
+
   const columns: Column<MemberRow>[] = [
     {
       header: 'ผู้ลงทะเบียน',
@@ -56,13 +73,17 @@ export default function MemberTable() {
         <>
           <div className="font-medium">{r.full_name}</div>
           {r.display_name && <div className="text-xs text-muted-foreground">LINE: {r.display_name}</div>}
-          <div className="text-xs text-muted-foreground md:hidden">{r.phone}</div>
+          <div className="text-xs text-muted-foreground md:hidden">{r.hospital_name} · {r.phone}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 md:hidden">
+            <span className={`whitespace-nowrap rounded px-2 py-0.5 text-xs ${STATUS_CLASS[r.approval_status]}`}>{APPROVAL_LABEL[r.approval_status]}</span>
+            {actions(r)}
+          </div>
         </>
       ),
     },
     {
       header: 'โรงพยาบาล',
-      className: 'min-w-[8rem]',
+      className: 'hidden min-w-[8rem] md:table-cell',
       cell: (r) => (
         <>
           <div>{r.hospital_name}</div>
@@ -74,6 +95,7 @@ export default function MemberTable() {
     { header: 'ลงทะเบียนเมื่อ', className: 'hidden lg:table-cell whitespace-nowrap', cell: (r) => formatDateTime(r.created_at) },
     {
       header: 'สถานะ',
+      className: 'hidden md:table-cell',
       cell: (r) => (
         <>
           <span className={`whitespace-nowrap rounded px-2 py-0.5 text-xs ${STATUS_CLASS[r.approval_status]}`}>{APPROVAL_LABEL[r.approval_status]}</span>
@@ -84,21 +106,9 @@ export default function MemberTable() {
     {
       header: 'จัดการ',
       align: 'center',
+      className: 'hidden md:table-cell',
       cell: (r) => (
-        <div className="flex justify-center gap-1">
-          {r.approval_status !== 'APPROVED' && (
-            <Button size="sm" variant="outline" disabled={busy === r.id} onClick={() => void approve(r)}>
-              <Check className="size-4" />
-              อนุมัติ
-            </Button>
-          )}
-          {r.approval_status !== 'REJECTED' && (
-            <Button size="sm" variant="ghost" className="text-danger" disabled={busy === r.id} onClick={() => void reject(r)}>
-              <X className="size-4" />
-              ไม่อนุมัติ
-            </Button>
-          )}
-        </div>
+        <div className="flex flex-wrap justify-center gap-1">{actions(r)}</div>
       ),
     },
   ];

@@ -192,9 +192,12 @@ export default function QueueBoard() {
 
       {/* คอลัมน์: มือถือเลื่อนแนวนอน · จอใหญ่เรียงเต็มความกว้าง */}
       {/* มุมมองแยกสีมีหลายคอลัมน์ (สี + เรียกแล้ว + รอนัดวัน) — คอลัมน์กว้างคงที่แล้วเลื่อนแนวนอน ไม่บีบจนการ์ดล้น */}
-      <div className={cn('-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:-mx-6 md:px-6 lg:mx-0 lg:snap-none lg:px-0', view === 'all' ? 'lg:grid lg:grid-cols-[2fr_1fr_1fr] lg:overflow-visible lg:pb-0' : 'lg:pb-3')}>
+      <div
+        style={{ '--lanes': lanes.map((l) => (l.items.length ? 'minmax(12.5rem,1fr)' : 'minmax(7.5rem,0.45fr)')).join(' ') } as React.CSSProperties}
+        className={cn('-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 md:-mx-6 md:px-6 lg:mx-0 lg:snap-none lg:px-0', view === 'all' ? 'lg:grid lg:grid-cols-[2fr_1fr_1fr] lg:overflow-visible lg:pb-0' : 'lg:grid lg:[grid-template-columns:var(--lanes)] lg:items-start lg:pb-3')}
+      >
         {lanes.map((lane) => (
-          <section key={lane.key} aria-label={lane.title} className={cn('flex w-[84vw] shrink-0 snap-start flex-col rounded-xl bg-muted/70 sm:w-80', view === 'all' && 'lg:w-auto lg:min-w-0')}>
+          <section key={lane.key} aria-label={lane.title} className={cn('flex w-[84vw] shrink-0 snap-start flex-col rounded-xl bg-muted/70 sm:w-80', 'lg:w-auto lg:min-w-0')}>
             <header className="flex items-center justify-between gap-2 rounded-t-xl border-t-4 px-3 py-2.5" style={{ borderTopColor: lane.color ?? (lane.kind === 'called' ? 'var(--warn-ink)' : lane.kind === 'needdate' ? 'var(--accent-ink)' : 'var(--primary)') }}>
               <h2 className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
                 {lane.color && <i className="inline-block size-2.5 rounded-full" style={{ background: lane.color }} aria-hidden="true" />}
@@ -203,7 +206,7 @@ export default function QueueBoard() {
               <span className="rounded-full bg-card px-2 py-0.5 text-xs font-semibold text-muted-foreground">{lane.items.length}</span>
             </header>
             <div className={cn('flex flex-col gap-2.5 px-2.5 pb-3', view === 'all' && lane.kind === 'waiting' && 'xl:grid xl:grid-cols-2 xl:items-start')}>
-              {lane.items.length === 0 && <p className="px-2 py-6 text-center text-sm text-muted-foreground">{lane.kind === 'called' ? 'ไม่มีเคสที่รอการยืนยัน' : lane.kind === 'needdate' ? 'ไม่มีเคสที่รอนัดวัน' : 'ไม่มีคิวค้าง'}</p>}
+              {lane.items.length === 0 && <p className="px-1 py-6 text-center text-xs text-muted-foreground lg:text-sm">{lane.kind === 'called' ? 'ไม่มีเคสที่รอการยืนยัน' : lane.kind === 'needdate' ? 'ไม่มีเคสที่รอนัดวัน' : 'ไม่มีคิวค้าง'}</p>}
               {lane.items.map((item, i) => (
                 <RequestCard
                   key={item.id}

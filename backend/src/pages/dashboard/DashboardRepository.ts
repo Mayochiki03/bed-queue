@@ -24,14 +24,24 @@ export class DashboardRepository {
     return db('bed_request').whereIn('status', OPEN_STATUSES).select(COLS);
   }
 
-  /** คำขอที่ส่งเข้ามาตั้งแต่เวลาที่กำหนด */
-  submittedSince(sinceIso: string): Promise<DashRow[]> {
-    return db('bed_request').where('submitted_at', '>=', sinceIso).select(COLS);
+  /** คำขอที่ส่งเข้ามาตั้งแต่เวลาที่กำหนด (ถึงก่อน untilIso ถ้าระบุ) */
+  submittedSince(sinceIso: string, untilIso?: string): Promise<DashRow[]> {
+    const q = db('bed_request').where('submitted_at', '>=', sinceIso);
+    if (untilIso) q.where('submitted_at', '<', untilIso);
+    return q.select(COLS);
   }
 
   /** คำขอที่ยืนยันส่งตัวตั้งแต่เวลาที่กำหนด (นับแนวโน้ม "ยืนยัน" ตามวันที่ยืนยันจริง) */
-  confirmedSince(sinceIso: string): Promise<DashRow[]> {
-    return db('bed_request').where({ status: 'CONFIRMED' }).where('resolved_at', '>=', sinceIso).select(COLS);
+  confirmedSince(sinceIso: string, untilIso?: string): Promise<DashRow[]> {
+    const q = db('bed_request').where({ status: 'CONFIRMED' }).where('resolved_at', '>=', sinceIso);
+    if (untilIso) q.where('resolved_at', '<', untilIso);
+    return q.select(COLS);
+  }
+
+  /** เวลาส่งคำขอแรกสุด */
+  async earliestSubmitted(): Promise<string | null> {
+    const r = (await db('bed_request').min({ m: 'submitted_at' }).first()) as { m: string | null } | undefined;
+    return r?.m ?? null;
   }
 
   hospitals(ids: number[]): Promise<{ id: number; code: string; name: string }[]> {

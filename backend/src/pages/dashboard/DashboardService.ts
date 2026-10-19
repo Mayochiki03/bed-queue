@@ -10,6 +10,7 @@
 import { getSetting } from '../../core/settings';
 import type { DashboardSummary, HospitalStat, SubstanceStat } from './Dashboard';
 import type { DashboardDto } from './DashboardDto';
+import { dayKeys, resolvePeriod, type Period } from './Period';
 import type { DashboardRepository, DashRow } from './DashboardRepository';
 
 const DAY = 86_400_000;
@@ -22,14 +23,21 @@ export const thaiDate = (d: Date | string) => new Date(d).toLocaleDateString('sv
 export class DashboardService {
   constructor(private repo: DashboardRepository) {}
 
-  async summary(dto: DashboardDto, now = new Date()): Promise<DashboardSummary> {
-    const days = dto.days ?? (await getSetting<number>('dashboard_default_days'));
+  /** แปลงช่วงเวลาที่เลือกเป็น Period (ใช้ร่วมกับการส่งออก Excel) */
+  async resolve(dto: DashboardDto, now: Date): Promise<Period> {
+    return resolvePeriod(dto, now, await getSetting<number>('dashboard_default_days'), () => this.repo.earliestSubmitted());
+  }
+
+  async summary(dto: DashboardDto, now = new Date(), given?: Period): Promise<DashboardSummary> {
+    const period = given ?? (await this.resolve(dto, now));
+    const days = period.days;
     const topN = await getSetting<number>('dashboard_top_n');
     const timeoutHours = await getSetting<number>('confirm_timeout_hours');
-    const since = new Date(now.getTime() - days * DAY).toISOString();
+    const since = period.since.toISOString();
+    const until = period.until?.toISOString();
     const nowIso = now.toISOString();
 
-    const [open, submitted, confirmed] = await Promise.all([this.repo.openQueue(), this.repo.submittedSince(since), this.repo.confirmedSince(since)]);
+    const [open, submitted, confirmed] = await Promise.all([this.repo.openQueue(), this.repo.submittedSince(since, until), this.repo.confirmedSince(since, until)]);
 
     // ---- คิวปัจจุบัน ----
     const waiting = open.filter((r) => r.status === 'WAITING');
@@ -52,7 +60,8 @@ export class DashboardService {
 
     // ---- แนวโน้มรายวัน ----
     const trendMap = new Map<string, { submitted: number; confirmed: number }>();
-    for (let i = days - 1; i >= 0; i--) trendMap.set(thaiDate(new Date(now.getTime() - i * DAY)), { submitted: 0, confirmed: 0 });
+    const trendDays = period.custom ? dayKeys(period) : Array.from({ length: days }, (_, i) => thaiDate(new Date(now.getTime() - (days - 1 - i) * DAY)));
+    for (const d of trendDays) trendMap.set(d, { submitted: 0, confirmed: 0 });
     for (const r of submitted) {
       const t = trendMap.get(thaiDate(r.submitted_at));
       if (t) t.submitted += 1;
@@ -102,6 +111,7 @@ export class DashboardService {
 
     return {
       days,
+      period_label: period.label,
       queue: {
         waiting: waiting.length,
         called: called.length,

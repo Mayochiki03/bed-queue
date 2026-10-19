@@ -10,9 +10,10 @@
  */
 import { Search, X } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
-import { useFormContext, type RegisterOptions } from 'react-hook-form';
+import { Controller, useFormContext, type RegisterOptions } from 'react-hook-form';
 import { cn } from '../lib/cn';
 import { MSG } from '../lib/messages';
+import { Select } from './Select';
 
 type Option = { value: string; label: string };
 
@@ -91,24 +92,18 @@ export function TextAreaField(props: BaseProps & { maxLength?: number; rows?: nu
 }
 
 export function SelectField(props: BaseProps & { options: Option[]; placeholder?: string }) {
-  const { register, formState } = useFormContext();
+  const { control, formState } = useFormContext();
   const { name, required, rules, options, placeholder = '-- เลือก --', disabled } = props;
   return (
     <FieldShell {...props}>
-      <select
-        id={name}
-        disabled={disabled}
-        aria-invalid={!!formState.errors[name]}
-        className={inputClass}
-        {...register(name, { required: required ? MSG.requiredSelect : false, ...rules })}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <Controller
+        name={name}
+        control={control}
+        rules={{ required: required ? MSG.requiredSelect : false, ...rules } as never}
+        render={({ field }) => (
+          <Select id={name} disabled={disabled} invalid={!!formState.errors[name]} value={String(field.value ?? '')} onChange={field.onChange} placeholder={placeholder} options={[{ value: '', label: placeholder }, ...options]} />
+        )}
+      />
     </FieldShell>
   );
 }
@@ -159,14 +154,7 @@ export function FilterSelect({ label, value, onChange, options, allLabel = 'ท�
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
-      <select id={id} className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{allLabel}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <Select id={id} value={value} onChange={onChange} options={[{ value: '', label: allLabel }, ...options]} />
     </div>
   );
 }

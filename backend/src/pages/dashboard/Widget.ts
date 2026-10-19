@@ -87,6 +87,8 @@ export type WidgetResult = {
   unit: 'ราย' | 'วัน';
   /** จำนวนวันของช่วงเวลาที่ใช้จริง */
   days: number;
+  /** ข้อความช่วงเวลา เช่น "30 วันล่าสุด" "วันนี้" "1 ก.ย. 69 – 30 ก.ย. 69" */
+  period_label: string;
   /** series = แต่ละคอลัมน์คือ "ค่าที่วัด" ต่างกัน · split = แต่ละคอลัมน์คือส่วนย่อยของแถว (ซ้อนสี) */
   column_mode: 'series' | 'split';
   time_group: TimeGroup | null;

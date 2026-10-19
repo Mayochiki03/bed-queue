@@ -10,6 +10,7 @@ import { settingApi, type SettingItem } from '../../api/settingApi';
 import { Button } from '../../components/Button';
 import { PageTitle } from '../../components/PageCard';
 import { usePopup } from '../../components/Popup';
+import { Select } from '../../components/Select';
 import { Spinner } from '../../components/Spinner';
 import { cn } from '../../lib/cn';
 import { MSG } from '../../lib/messages';
@@ -72,13 +73,7 @@ export default function SettingPage() {
     const id = `set_${i.key}`;
     if (i.options)
       return (
-        <select id={id} className={inputClass} value={String(v)} onChange={(e) => set(i.key, e.target.value)}>
-          {i.options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <Select id={id} value={String(v)} onChange={(x) => set(i.key, x)} options={i.options.map((o) => ({ value: String(o.value), label: o.label }))} />
       );
     if (i.type === 'BOOL')
       return (
@@ -112,7 +107,7 @@ export default function SettingPage() {
     <>
       <PageTitle hint="ค่ากลางของระบบคิว · แก้แล้วกดบันทึกที่แถบด้านล่าง">ตั้งค่าระบบ</PageTitle>
       <div className="grid gap-4 pb-24 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <nav aria-label="หมวดตั้งค่า" className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+        <nav aria-label="หมวดตั้งค่า" className="flex flex-wrap gap-2 lg:flex-col">
           {tabs.map((c) => {
             const m = meta(c);
             const Icon = m.icon;
@@ -143,7 +138,7 @@ export default function SettingPage() {
                       </label>
                       {i.hint && <p className="mt-0.5 text-xs text-muted-foreground">{i.hint}</p>}
                     </div>
-                    <div>{renderInput(i)}</div>
+                    <div className="min-w-0">{renderInput(i)}</div>
                   </div>
                 ))}
               </div>

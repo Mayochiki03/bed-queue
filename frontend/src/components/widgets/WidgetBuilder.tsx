@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dashboardApi, type WidgetResult, type WidgetSaveInput } from '../../api/dashboardApi';
 import { useLookups } from '../../hooks/useLookups';
+import { toParams, type PeriodChoice } from '../../lib/period';
 import { cn } from '../../lib/cn';
 import {
   CATEGORY_GROUPS, CHARTS, CHART_LABEL, COUNT_MEASURES, DAYS_MEASURES, GROUP_LABEL, MEASURE_LABEL, PERIODS, SPLITS, TIME_GROUPS, WIDTH_LABEL,
@@ -12,6 +13,7 @@ import {
 } from '../../lib/widgetRules';
 import { Button } from '../Button';
 import { Modal } from '../Modal';
+import { Select } from '../Select';
 import { usePopup } from '../Popup';
 import { Spinner } from '../Spinner';
 import { WidgetView } from './WidgetView';
@@ -40,9 +42,9 @@ const Section = ({ n, title, children }: { n: number; title: string; children: R
   </fieldset>
 );
 
-type Props = { open: boolean; initial: WidgetSaveInput; dashboardDays: number; onClose: () => void; onSaved: () => void };
+type Props = { open: boolean; initial: WidgetSaveInput; dashboardPeriod: PeriodChoice; onClose: () => void; onSaved: () => void };
 
-export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }: Props) {
+export function WidgetBuilder({ open, initial, dashboardPeriod, onClose, onSaved }: Props) {
   const popup = usePopup();
   const lookups = useLookups();
   const [w, setW] = useState<WidgetSaveInput>(initial);
@@ -72,7 +74,7 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
     const my = ++seq.current;
     setBusy(true);
     const t = setTimeout(() => {
-      void dashboardApi.preview({ ...config, title: config.title || 'ตัวอย่าง' }, dashboardDays).then((r) => {
+      void dashboardApi.preview({ ...config, title: config.title || 'ตัวอย่าง' }, toParams(dashboardPeriod)).then((r) => {
         if (my !== seq.current) return;
         setBusy(false);
         if (r.ok && r.data) {
@@ -85,7 +87,7 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
       });
     }, 400);
     return () => clearTimeout(t);
-  }, [open, config, problem, dashboardDays]);
+  }, [open, config, problem, dashboardPeriod]);
 
   const patch = (p: Partial<WidgetSaveInput>) => setW((x) => ({ ...x, ...p }));
   /** เปลี่ยนค่าที่ส่งผลต่อรูปแบบ แล้วเลือกรูปแบบที่เหมาะให้ถ้าของเดิมใช้ไม่ได้ */
@@ -171,33 +173,10 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
           </Section>
 
           <Section n={3} title="แยกกลุ่มตาม">
-            <select aria-label="แยกกลุ่มตาม" className={sel} value={w.group_by} onChange={(e) => patchShape({ group_by: e.target.value as Group })}>
-              <option value="none">{GROUP_LABEL.none}</option>
-              <optgroup label="ตามประเภท">
-                {CATEGORY_GROUPS.map((g) => (
-                  <option key={g} value={g}>
-                    {GROUP_LABEL[g]}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="ตามเวลา">
-                {TIME_GROUPS.map((g) => (
-                  <option key={g} value={g}>
-                    {GROUP_LABEL[g]}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+            <Select aria-label="แยกกลุ่มตาม" value={w.group_by} onChange={(v) => patchShape({ group_by: v as Group })} options={[{ value: 'none', label: GROUP_LABEL.none }, ...CATEGORY_GROUPS.map((g) => ({ value: g, label: GROUP_LABEL[g], group: 'ตามประเภท' })), ...TIME_GROUPS.map((g) => ({ value: g, label: GROUP_LABEL[g], group: 'ตามเวลา' }))]} />
             <label className="mt-2.5 block text-xs text-muted-foreground">
               ซ้อนสีตาม (เลือกได้เมื่อวัดอย่างเดียวและมีการแยกกลุ่ม)
-              <select aria-label="ซ้อนสีตาม" className={cn(sel, 'mt-1')} value={w.split_by} disabled={w.group_by === 'none' || w.measures.length !== 1} onChange={(e) => patchShape({ split_by: e.target.value as Split })}>
-                <option value="none">ไม่ซ้อน</option>
-                {SPLITS.filter((s) => s !== 'none' && s !== w.group_by).map((s) => (
-                  <option key={s} value={s}>
-                    {GROUP_LABEL[s]}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="ซ้อนสีตาม" className="mt-1" value={w.split_by} disabled={w.group_by === 'none' || w.measures.length !== 1} onChange={(v) => patchShape({ split_by: v as Split })} options={[{ value: 'none', label: 'ไม่ซ้อน' }, ...SPLITS.filter((x) => x !== 'none' && x !== w.group_by).map((x) => ({ value: x, label: GROUP_LABEL[x] }))]} />
             </label>
           </Section>
 
@@ -219,14 +198,7 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
           <Section n={5} title="ช่วงเวลาและตัวกรอง">
             <label className="block text-xs text-muted-foreground">
               ช่วงเวลา
-              <select aria-label="ช่วงเวลา" className={cn(sel, 'mt-1')} value={w.period_days ?? ''} onChange={(e) => patch({ period_days: e.target.value === '' ? null : Number(e.target.value) })}>
-                <option value="">ตามที่เลือกบนหน้า Dashboard</option>
-                {PERIODS.map((d) => (
-                  <option key={d} value={d}>
-                    {d} วันล่าสุด
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="ช่วงเวลา" className="mt-1" value={w.period_days === null ? '' : String(w.period_days)} onChange={(v) => patch({ period_days: v === '' ? null : Number(v) })} options={[{ value: '', label: 'ตามที่เลือกบนหน้า Dashboard' }, ...PERIODS.map((d) => ({ value: String(d), label: `${d} วันล่าสุด` }))]} />
             </label>
             {showLimit && (
               <label className="mt-2.5 block text-xs text-muted-foreground">
@@ -244,13 +216,7 @@ export function WidgetBuilder({ open, initial, dashboardDays, onClose, onSaved }
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-xs text-muted-foreground">
                 ความกว้าง{' '}
-                <select aria-label="ความกว้าง" className="ml-1 rounded-md border border-border bg-card px-2 py-1.5 text-sm text-foreground" value={w.width} onChange={(e) => patch({ width: Number(e.target.value) })}>
-                  {[1, 2, 3, 4].map((n) => (
-                    <option key={n} value={n}>
-                      {WIDTH_LABEL[n]}
-                    </option>
-                  ))}
-                </select>
+                <Select aria-label="ความกว้าง" size="sm" className="ml-1 w-auto min-w-[6rem]" value={String(w.width)} onChange={(v) => patch({ width: Number(v) })} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: WIDTH_LABEL[n]! }))} />
               </label>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" className="size-4 accent-primary" checked={w.is_active} onChange={(e) => patch({ is_active: e.target.checked })} />

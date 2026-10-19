@@ -15,6 +15,8 @@ import { ColorChip } from '../ColorChip';
 import { Modal } from '../Modal';
 import { usePopup } from '../Popup';
 import { Spinner } from '../Spinner';
+import { Select } from '../Select';
+import { DatePicker } from '../DatePicker';
 import { EVENT_LABEL, fmtHours, fmtWait, GENDER_LABEL, PhoneLink, StatusChip, VIA_LABEL } from './parts';
 
 const ACTION_LABEL: Record<Action, string> = { CALL: 'เรียกคิว', CONFIRM: 'ยืนยันส่งตัว', DEFER: 'ยืนยันจะมา ขอเลื่อนวัน', DECLINE: 'ไม่ยืนยัน', CANCEL: 'ยกเลิกคำขอ', REQUEUE: 'คืนคิว', REOPEN: 'เปิดคิวใหม่' };
@@ -322,7 +324,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                     {outcome === 'CALL' ? 'วันที่เตียงโรงพยาบาลเราว่างรับ' : d.status === 'NEED_DATE' ? 'วันที่ตกลงกับผู้ขอแล้ว' : 'วันที่ส่งตัว'}
                     {(outcome === 'CALL' || d.status === 'NEED_DATE') && <span className="text-danger"> *</span>}
                   </label>
-                  <input id="bed-date" type="date" min={todayThai()} className={cn(inputClass, 'sm:max-w-[14rem]')} value={bedDate} onChange={(e) => setBedDate(e.target.value)} />
+                  <DatePicker id="bed-date" min={todayThai()} clearable={false} className="sm:max-w-[14rem]" value={bedDate} onChange={setBedDate} />
                   <p className="mt-1 text-xs text-muted-foreground">
                     {outcome === 'CALL'
                       ? 'ระบบแนบวันที่นี้ในการ์ด LINE ที่ส่งให้ผู้ขอ — ผู้ขอจะกด "ยืนยันตามวันที่แจ้ง" หรือ "ส่งได้ ขอเลื่อนวัน" ได้'
@@ -376,14 +378,7 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
                   <label htmlFor="transfer-to" className="mb-1 block text-sm font-medium">
                     ผู้ขอคนใหม่
                   </label>
-                  <select id="transfer-to" className={inputClass} value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
-                    <option value="">-- เลือก --</option>
-                    {transfer.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.full_name} · {r.phone}
-                      </option>
-                    ))}
-                  </select>
+                  <Select id="transfer-to" value={transferTo} onChange={setTransferTo} options={[{ value: '', label: '-- เลือก --' }, ...transfer.map((r) => ({ value: String(r.id), label: `${r.full_name} · ${r.phone}` }))]} />
                 </>
               )}
               <div className="mt-3 flex justify-end gap-2">

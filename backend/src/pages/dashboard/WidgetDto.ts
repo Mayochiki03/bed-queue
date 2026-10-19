@@ -4,6 +4,7 @@
  */
 import { z } from 'zod';
 import { idField } from '../../core/http';
+import { periodShape, refinePeriod } from './Period';
 import { CHARTS, GROUPS, MEASURES, PERIODS, SPLITS } from './Widget';
 
 const codeList = z.array(z.string().trim().min(1).max(30)).max(50).default([]);
@@ -24,7 +25,6 @@ export const widgetConfigShape = {
   row_limit: z.number().int().min(3).max(50).default(10),
 };
 
-const days = z.number().int().min(1).max(365).optional();
 
 export const widgetSaveDto = z.object({
   id: idField.optional(),
@@ -35,8 +35,8 @@ export const widgetSaveDto = z.object({
 export type WidgetSaveDto = z.infer<typeof widgetSaveDto>;
 
 /** preview ไม่บังคับชื่อ (ผู้ใช้ยังพิมพ์ไม่เสร็จก็ดูตัวอย่างได้) */
-export const widgetPreviewDto = z.object({ config: z.object({ ...widgetConfigShape, title: z.string().trim().max(120).default('') }), days });
-export const widgetDataDto = z.object({ days, include_hidden: z.boolean().default(false) });
+export const widgetPreviewDto = z.object({ config: z.object({ ...widgetConfigShape, title: z.string().trim().max(120).default('') }), ...periodShape }).superRefine(refinePeriod);
+export const widgetDataDto = z.object({ ...periodShape, include_hidden: z.boolean().default(false) }).superRefine(refinePeriod);
 export const widgetIdDto = z.object({ id: idField });
 export const widgetLayoutDto = z.object({
   items: z

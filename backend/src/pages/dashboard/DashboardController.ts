@@ -1,7 +1,7 @@
 /**
  * DashboardController.ts — API Dashboard
- *   POST /api/dashboard/summary         { days? }   ตัวเลขคิวปัจจุบัน (ใช้กับแถบด้านบนและแจ้งเตือนเกินเวลา)
- *   POST /api/dashboard/widget/data     { days?, include_hidden? }   widget ทั้งหมด + ผลลัพธ์ (ทุกคน · include_hidden เฉพาะ ADMIN)
+ *   POST /api/dashboard/summary         { days? | preset? | date_from?, date_to? }   ตัวเลขคิวปัจจุบัน (ใช้กับแถบด้านบนและแจ้งเตือนเกินเวลา)
+ *   POST /api/dashboard/widget/data     { days? | preset? | date_from?, date_to?, include_hidden? }   widget ทั้งหมด + ผลลัพธ์ (ทุกคน · include_hidden เฉพาะ ADMIN)
  *   POST /api/dashboard/widget/preview  { config, days? }            ตัวอย่างตอนสร้าง/แก้ widget (ADMIN)
  *   POST /api/dashboard/widget/save     { id?, ...config }           สร้าง/แก้ widget (ADMIN)
  *   POST /api/dashboard/widget/delete   { id }                       ลบ widget (ADMIN)
@@ -38,12 +38,12 @@ export class DashboardController {
 
   private widgetData = async (req: Request, res: Response) => {
     const dto = parse(widgetDataDto, req.body);
-    res.json(ok(await this.widgets.data(dto.days, dto.include_hidden && hasRole(req.user!.role, 'ADMIN'))));
+    res.json(ok(await this.widgets.data(dto, dto.include_hidden && hasRole(req.user!.role, 'ADMIN'))));
   };
 
   private widgetPreview = async (req: Request, res: Response) => {
     const dto = parse(widgetPreviewDto, req.body);
-    res.json(ok(await this.widgets.preview(dto.config, dto.days)));
+    res.json(ok(await this.widgets.preview(dto.config, dto)));
   };
 
   private widgetSave = async (req: Request, res: Response) => {

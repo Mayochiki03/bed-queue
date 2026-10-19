@@ -6,6 +6,7 @@ import { FileSpreadsheet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { exportApi, type ExportFilters, type ExportOptions, type ExportSection } from '../api/exportApi';
 import { cn } from '../lib/cn';
+import { toParams, type PeriodChoice } from '../lib/period';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { usePopup } from './Popup';
@@ -26,14 +27,14 @@ type Props = {
   onClose: () => void;
   /** ชุดข้อมูลที่ติ๊กไว้ตอนเปิด */
   initial: ExportSection[];
-  /** ช่วงเวลา (วัน) ที่เลือกอยู่บน Dashboard — ไม่ใส่ = ค่าเริ่มต้นของระบบ */
-  days?: number;
+  /** ช่วงเวลาที่เลือกอยู่บน Dashboard — ไม่ใส่ = ค่าเริ่มต้นของระบบ */
+  period?: PeriodChoice;
   /** ตัวกรองของหน้าที่เรียก (ประวัติคำขอ) — ถ้ามี คำขอ/เหตุการณ์จะออกตามตัวกรองนี้ */
   filters?: ExportFilters;
   filtersNote?: string;
 };
 
-export function ExportDialog({ open, onClose, initial, days, filters, filtersNote }: Props) {
+export function ExportDialog({ open, onClose, initial, period, filters, filtersNote }: Props) {
   const popup = usePopup();
   const [opts, setOpts] = useState<ExportOptions | null>(null);
   const [picked, setPicked] = useState<Set<ExportSection>>(new Set(initial));
@@ -64,7 +65,8 @@ export function ExportDialog({ open, onClose, initial, days, filters, filtersNot
       else next.add(s);
       return next;
     });
-  const usedDays = days ?? opts?.default_days ?? 30;
+  const usedPeriod: PeriodChoice = period ?? { kind: 'days', days: opts?.default_days ?? 30 };
+  const periodText = usedPeriod.kind === 'days' ? `${usedPeriod.days} วันล่าสุด` : usedPeriod.kind === 'preset' ? { today: 'วันนี้', yesterday: 'เมื่อวาน', all: 'ทั้งหมดตั้งแต่เปิดระบบ' }[usedPeriod.preset] : `${usedPeriod.from} ถึง ${usedPeriod.to || 'วันนี้'}`;
   const sections = ORDER.filter((s) => picked.has(s) && (s !== 'audit' || opts?.can_audit));
   const needsScope = sections.some((s) => s === 'requests' || s === 'events' || s === 'audit');
   const widgetsOk = !sections.includes('widgets') || widgetIds.size > 0;
@@ -75,7 +77,7 @@ export function ExportDialog({ open, onClose, initial, days, filters, filtersNot
     const res = await exportApi
       .build({
         sections,
-        days: usedDays,
+        ...toParams(usedPeriod),
         scope,
         widget_ids: sections.includes('widgets') ? [...widgetIds] : [],
         filters: filters && (sections.includes('requests') || sections.includes('events')) ? filters : undefined,
@@ -173,7 +175,7 @@ export function ExportDialog({ open, onClose, initial, days, filters, filtersNot
                 <div className="flex flex-col gap-1.5 text-sm">
                   <label className="flex items-center gap-2">
                     <input type="radio" name="scope" className="size-4 accent-primary" checked={scope === 'period'} onChange={() => setScope('period')} />
-                    เฉพาะที่ส่งในช่วง {usedDays} วันล่าสุด (ตามที่เลือกบนหน้าหลัก)
+                    เฉพาะที่ส่งในช่วง {periodText} (ตามที่เลือกบนหน้าหลัก)
                   </label>
                   <label className="flex items-center gap-2">
                     <input type="radio" name="scope" className="size-4 accent-primary" checked={scope === 'all'} onChange={() => setScope('all')} />

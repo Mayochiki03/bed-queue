@@ -5,6 +5,7 @@
 import { ArrowLeft, ArrowRight, Copy, Eye, EyeOff, GripVertical, Pencil, Trash2 } from 'lucide-react';
 import type { WidgetResult, WidgetWithResult } from '../../api/dashboardApi';
 import { cn } from '../../lib/cn';
+import { Select } from '../Select';
 import { WIDTH_LABEL } from '../../lib/widgetRules';
 import { WidgetView } from './WidgetView';
 
@@ -62,16 +63,10 @@ export function WidgetCard({ w, result, edit, isFirst, isLast, dragging, dragOve
           <button type="button" className={iconBtn} disabled={isLast} onClick={() => onMove(1)} aria-label="เลื่อนไปถัดไป" title="เลื่อนไปถัดไป">
             <ArrowRight className="size-4" />
           </button>
-          <label className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="ml-1 flex items-center gap-1 text-xs text-muted-foreground">
             ความกว้าง
-            <select className="rounded-md border border-border bg-card px-1.5 py-1 text-xs text-foreground" value={w.width} onChange={(e) => onWidth(Number(e.target.value))} aria-label={`ความกว้าง ${w.title}`}>
-              {[1, 2, 3, 4].map((n) => (
-                <option key={n} value={n}>
-                  {WIDTH_LABEL[n]}
-                </option>
-              ))}
-            </select>
-          </label>
+            <Select size="sm" className="w-auto min-w-[6rem]" aria-label={`ความกว้าง ${w.title}`} value={String(w.width)} onChange={(v) => onWidth(Number(v))} options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: WIDTH_LABEL[n]! }))} />
+          </span>
           <span className="flex-1" />
           <button type="button" className={iconBtn} onClick={onToggle} aria-label={w.is_active ? 'ซ่อน' : 'แสดง'} title={w.is_active ? 'ซ่อน' : 'แสดง'}>
             {w.is_active ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
