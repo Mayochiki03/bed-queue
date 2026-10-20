@@ -273,7 +273,7 @@ export class ExportService {
     const { rows, total, open } = await this.repo.requesters();
     const header = ['ชื่อ-สกุล', 'โรงพยาบาล', 'รหัส รพ.', 'เบอร์โทร', 'เบอร์สำรอง', 'ลงทะเบียนผ่าน LINE', 'ชื่อใน LINE', 'รับทราบเรื่องข้อมูลส่วนบุคคลเมื่อ', 'สถานะ', 'ใช้งานล่าสุด', 'ลงทะเบียนเมื่อ', 'คำขอทั้งหมด (ราย)', 'ที่ยังไม่จบ (ราย)'];
     const data: Cell[][] = rows.map((r) => [
-      r.full_name, r.hospital_name, r.hospital_code, r.phone, r.phone2, r.line_user_id ? (r.line_user_id.startsWith('MOCK-') ? 'ผู้ขอจำลอง (ทดสอบ)' : 'ใช่') : 'ไม่ใช่ (เจ้าหน้าที่บันทึก)', r.display_name,
+      r.full_name, r.hospital_name, r.hospital_code, r.phone, r.phone2, r.line_user_id ? ((r.line_user_id.startsWith('MOCK-') || r.line_user_id.startsWith('DEMO-')) ? 'ผู้ขอจำลอง (ทดสอบ)' : 'ใช่') : 'ไม่ใช่ (เจ้าหน้าที่บันทึก)', r.display_name,
       bangkokDate(r.pdpa_accepted_at), r.is_blocked ? 'ระงับการใช้งาน' : 'ปกติ', bangkokDate(r.last_seen_at), bangkokDate(r.created_at), total.get(r.id) ?? 0, open.get(r.id) ?? 0,
     ]);
     const s = c.book.sheet('ผู้ขอ', { widths: fitWidths(header, data, 10, 40), tab: '7C5CD6' });

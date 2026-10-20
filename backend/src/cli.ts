@@ -5,7 +5,7 @@ import { ensureAdmin } from './core/auth';
 import { checkConnection, closeDb } from './core/db';
 import { migrateLatest, migrateRollback, migrateStatus, resetDb } from './core/migrate';
 import { config } from './core/config';
-import { clearMock, createMock } from './mockData';
+import { clearMock, createMock, mockStatus } from './mockData';
 
 const cmd = process.argv[2];
 
@@ -43,17 +43,24 @@ async function main() {
       if (config.isProd) throw new Error('ห้ามสร้างข้อมูลตัวอย่างบน production');
       await migrateLatest(); // ถ้าเพิ่งอัปเดตโค้ดแล้วยังไม่ได้เปิดระบบ ตารางอาจยังไม่ครบ
       const r = await createMock({ force: process.argv.includes('--force') });
-      console.log(`สร้างข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง ${r.requesters} คน · คำขอ ${r.requests} รายการ (โรงพยาบาล ${r.hospitals} แห่ง)\nลบทิ้งได้ด้วย: npm run mock:clear หรือปุ่ม "ล้างข้อมูลจำลอง" ในเมนูผู้ขอจำลอง`);
+      console.log(`สร้างข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง ${r.requesters} คน · ผู้ลงทะเบียนตัวอย่าง (หน้าสมาชิก) ${r.members} คน · คำขอ ${r.requests} รายการ · รพ. ตัวอย่าง ${r.hospitals} แห่ง\nตรวจว่าเหลือเท่าไร: npm run mock:status · ลบทิ้ง (ทำก่อนขึ้น production): npm run mock:clear`);
       break;
     }
     case 'mock-clear': {
       await migrateLatest();
       const r = await clearMock();
-      console.log(`ลบข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง ${r.requesters} คน · คำขอ ${r.requests} รายการ (โรงพยาบาลที่เพิ่มไว้ไม่ถูกลบ)`);
+      const left = await mockStatus();
+      console.log(`ลบข้อมูลตัวอย่างแล้ว: ผู้ขอจำลอง/ผู้ลงทะเบียนตัวอย่าง ${r.requesters} คน · คำขอ ${r.requests} รายการ · รพ. ตัวอย่าง ${r.hospitals} แห่ง\nฐานข้อมูล "${config.db.database}" เหลือข้อมูลตัวอย่าง: ${left.total === 0 ? 'ไม่มี ✔' : `ผู้ขอ ${left.requesters} · คำขอ ${left.requests} · รพ. ${left.hospitals} (รพ. ตัวอย่างที่ยังมีผู้ใช้จริงอ้างอิงอยู่จะไม่ถูกลบ)`}`);
+      break;
+    }
+    case 'mock-status': {
+      await migrateLatest();
+      const r = await mockStatus();
+      console.log(`ฐานข้อมูล "${config.db.database}": ผู้ขอจำลอง/ผู้ลงทะเบียนตัวอย่าง ${r.requesters} คน · คำขอตัวอย่าง ${r.requests} รายการ · รพ. ตัวอย่าง ${r.hospitals} แห่ง${r.total ? '\n→ ก่อนขึ้น production ให้รัน: npm run mock:clear' : '\n→ ไม่มีข้อมูลตัวอย่าง พร้อมขึ้น production ในส่วนนี้'}`);
       break;
     }
     default:
-      console.log('ใช้: npm run migrate | migrate:status | db:reset | seed | mock | mock:clear');
+      console.log('ใช้: npm run migrate | migrate:status | db:reset | seed | mock | mock:status | mock:clear');
   }
 }
 

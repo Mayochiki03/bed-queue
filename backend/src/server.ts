@@ -7,6 +7,7 @@ import { ensureAdmin } from './core/auth';
 import { config } from './core/config';
 import { checkConnection, closeDb } from './core/db';
 import { migrateLatest } from './core/migrate';
+import { mockStatus } from './mockData';
 import { createPublicApp } from './publicApp';
 
 async function main() {
@@ -14,6 +15,11 @@ async function main() {
   if (config.autoMigrate) {
     const { applied } = await migrateLatest();
     if (applied.length) console.log(`[db] migrate แล้ว ${applied.length} รายการ`);
+  }
+  if (config.isProd) {
+    // กันเผลอ: ถ้ามีข้อมูลตัวอย่าง (mock) ค้างอยู่ในระบบจริง ให้เตือนดัง ๆ ตอนเปิดระบบ (ไม่บล็อก — ลบด้วย npm run mock:clear)
+    const m = await mockStatus().catch(() => null);
+    if (m && m.total > 0) console.warn(`\n⚠⚠⚠ [production] พบข้อมูลตัวอย่าง (mock) ค้างอยู่: ผู้ขอ ${m.requesters} คน · คำขอ ${m.requests} รายการ · รพ. ${m.hospitals} แห่ง — ควรลบก่อนใช้งานจริง: npm run mock:clear\n`);
   }
   if (await ensureAdmin()) {
     console.log(`[db] สร้างผู้ดูแลระบบคนแรก: ${config.admin.username} / ${config.isProd ? '(ตาม ADMIN_PASSWORD)' : config.admin.password}`);

@@ -99,4 +99,5 @@ frontend/src/
 | [docs/03-ทำหน้าใหม่.md](docs/03-ทำหน้าใหม่.md) | ก๊อปหน้าตัวอย่างเป็นหน้าใหม่ทีละขั้น |
 | [docs/04-typescript-ที่ต้องรู้.md](docs/04-typescript-ที่ต้องรู้.md) | TS ที่ต้องรู้ในโปรเจกต์นี้ |
 | [docs/05-เทียบกับ-spring-boot.md](docs/05-เทียบกับ-spring-boot.md) | สำหรับคนมาจาก Spring Boot |
+| [docs/06-ข้อมูลตัวอย่าง-mock.md](docs/06-ข้อมูลตัวอย่าง-mock.md) | ข้อมูลตัวอย่างให้ลองเล่น + คำสั่งล้างก่อนขึ้น production |
 | [AGENTS.md](AGENTS.md) | กติกาเมื่อให้ AI ช่วยเขียนโค้ด |

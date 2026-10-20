@@ -122,7 +122,7 @@ export class NotificationService {
       const log = (status: 'SENT' | 'FAILED' | 'SKIPPED', error: string | null) => this.repo.addLog({ request_id: requestId, requester_id: target?.id ?? null, type, status, error_message: error });
 
       if (!target || !target.line_user_id) return void (await log('SKIPPED', 'ผู้ขอไม่มีบัญชี LINE (เจ้าหน้าที่บันทึกแทน)'));
-      if (target.line_user_id.startsWith('MOCK-')) return void (await log('SKIPPED', 'ผู้ขอจำลอง (ทดสอบ) ไม่ส่งจริง'));
+      if (target.line_user_id.startsWith('MOCK-') || target.line_user_id.startsWith('DEMO-')) return void (await log('SKIPPED', 'ผู้ขอจำลอง (ทดสอบ) ไม่ส่งจริง'));
       const [mode, token, quota] = await Promise.all([getSetting<string>('connection_mode'), getSetting<string>('line_channel_token'), getSetting<number>('line_monthly_quota')]);
       if (mode === 'LOCAL') return void (await log('SKIPPED', 'โหมด LOCAL (ยังไม่ต่อ LINE)'));
       if (!token) return void (await log('SKIPPED', 'ยังไม่ได้ตั้ง Channel Access Token'));

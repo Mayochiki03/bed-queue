@@ -3,6 +3,7 @@
  *
  * ข้อมูลทั้งหมดผูกกับ "ผู้ขอจำลอง" (line_user_id ขึ้นต้น MOCK-) จึง
  *   - ไม่ส่งข้อความ LINE จริงหาใคร (ระบบข้ามผู้ขอจำลอง)
+ *   - ผู้ลงทะเบียนตัวอย่างในหน้า "สมาชิก รพ." ใช้ line_user_id ขึ้นต้น DEMO- (ระบบข้ามการส่ง LINE เหมือนกัน)
  *   - ลบได้หมดด้วยปุ่ม "ล้างข้อมูลจำลอง" ในเมนูนักพัฒนา หรือ npm run mock:clear (ไม่แตะข้อมูลที่เจ้าหน้าที่บันทึกเอง)
  * ชื่อ/เบอร์เป็นของสมมติ (นามสกุล "ตัวอย่าง", เบอร์ 081000xxxx) · สุ่มแบบคงที่ รันกี่ครั้งก็ได้ข้อมูลหน้าตาเดิม (เวลาเลื่อนตามวันนี้)
  */
@@ -11,15 +12,29 @@ import { requestRepository } from './pages/request';
 import { requestNo } from './pages/request/Request';
 import { formatThaiDate, thaiToday } from './core/thaiDate';
 
+/** รพ. ตัวอย่าง: รหัส 9900x + ต่อท้าย "(ตัวอย่าง)" — ไม่ชนรหัสจริง และ mock:clear ลบเฉพาะกลุ่มนี้ (ที่ไม่มีใครอ้างอิงแล้ว) ไม่แตะ รพ. จริงที่นำเข้าจาก Excel */
 const HOSPITALS: [string, string][] = [
-  ['11206', 'รพ.สงขลา'],
-  ['10711', 'รพ.หาดใหญ่'],
-  ['14561', 'รพ.สทิงพระ'],
-  ['11000', 'รพ.สะเดา'],
-  ['12345', 'รพ.นาทวี'],
-  ['10712', 'รพ.ระโนด'],
-  ['10713', 'รพ.รัตภูมิ'],
-  ['10714', 'รพ.จะนะ'],
+  ['99001', 'รพ.สงขลา (ตัวอย่าง)'],
+  ['99002', 'รพ.หาดใหญ่ (ตัวอย่าง)'],
+  ['99003', 'รพ.สทิงพระ (ตัวอย่าง)'],
+  ['99004', 'รพ.สะเดา (ตัวอย่าง)'],
+  ['99005', 'รพ.นาทวี (ตัวอย่าง)'],
+  ['99006', 'รพ.ระโนด (ตัวอย่าง)'],
+  ['99007', 'รพ.รัตภูมิ (ตัวอย่าง)'],
+  ['99008', 'รพ.จะนะ (ตัวอย่าง)'],
+];
+const MOCK_HOSPITAL_CODES = HOSPITALS.map(([c]) => c);
+/** ผู้ลงทะเบียนตัวอย่างที่ไปโผล่ในหน้า "สมาชิก รพ." (ให้ลองกดอนุมัติ/ไม่อนุมัติ) — line_user_id ขึ้นต้น DEMO- (ระบบไม่ส่ง LINE จริงหา) */
+const DEMO_MEMBERS: { name: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string }[] = [
+  { name: 'สายสุนีย์ ตัวอย่าง', status: 'PENDING' },
+  { name: 'ธีรวัฒน์ ตัวอย่าง', status: 'PENDING' },
+  { name: 'กมลชนก ตัวอย่าง', status: 'PENDING' },
+  { name: 'ณัฐพล ตัวอย่าง', status: 'PENDING' },
+  { name: 'ลลิตา ตัวอย่าง', status: 'PENDING' },
+  { name: 'ภานุพงศ์ ตัวอย่าง', status: 'APPROVED' },
+  { name: 'จิราพร ตัวอย่าง', status: 'APPROVED' },
+  { name: 'อดิศร ตัวอย่าง', status: 'REJECTED', note: 'เบอร์โทรไม่ตรงกับ รพ.' },
+  { name: 'วราภรณ์ ตัวอย่าง', status: 'REJECTED' },
 ];
 const STAFF = ['สมศรี ใจดี', 'วิชัย มั่นคง', 'นภา สุขสม', 'ประเสริฐ ชูศักดิ์', 'อรทัย พึ่งบุญ', 'กิตติ ศรีสุข', 'พรทิพย์ แก้วมณี', 'ธนากร ทองดี', 'ศิริพร ใจเย็น', 'สุรชัย วงศ์ใหญ่', 'ปรียา นามสกุล', 'มานะ เพียรดี'].map((n) => n.replace('นามสกุล', 'ตัวอย่าง'));
 const FIRST_M = ['สมชาย', 'วิรัตน์', 'อนุชา', 'ปรีชา', 'ธวัช', 'สุเทพ', 'ชาตรี', 'เอกชัย', 'บุญเลิศ', 'ประยุทธ'];
@@ -40,12 +55,28 @@ function rng(seed: number) {
   };
 }
 
+/** ลบผู้ขอจำลอง/ผู้ลงทะเบียนตัวอย่าง + คำขอ/ประวัติของพวกเขา + รพ. ตัวอย่าง (เฉพาะที่ไม่มีใครอ้างอิงแล้ว) — ไม่แตะข้อมูลที่เจ้าหน้าที่บันทึกเอง/รพ. จริง */
 export async function clearMock() {
-  return requestRepository.deleteMockData();
+  const r = await requestRepository.deleteMockData();
+  const hospitals = await db('hospital')
+    .whereIn('code', MOCK_HOSPITAL_CODES)
+    .whereNotExists(db('requester').select(db.raw('1')).whereRaw('requester.hospital_id = hospital.id'))
+    .whereNotExists(db('bed_request').select(db.raw('1')).whereRaw('bed_request.hospital_id = hospital.id'))
+    .delete();
+  return { ...r, hospitals: Number(hospitals) };
+}
+
+/** ข้อมูลตัวอย่างที่ค้างอยู่ในฐานข้อมูลนี้เท่าไร (ใช้ตรวจก่อนขึ้น production) */
+export async function mockStatus() {
+  const count = async (q: any) => Number(((await q.count({ n: '*' }).first()) as { n: number | string }).n);
+  const requesters = await count(db('requester').where('line_user_id', 'like', 'MOCK-%').orWhere('line_user_id', 'like', 'DEMO-%'));
+  const requests = await count(db('bed_request').whereIn('requester_id', db('requester').where('line_user_id', 'like', 'MOCK-%').orWhere('line_user_id', 'like', 'DEMO-%').select('id')));
+  const hospitals = await count(db('hospital').whereIn('code', MOCK_HOSPITAL_CODES));
+  return { requesters, requests, hospitals, total: requesters + requests + hospitals };
 }
 
 export async function createMock(opts: { force?: boolean } = {}) {
-  const existing = Number(((await db('requester').where('line_user_id', 'like', 'MOCK-%').count({ n: '*' }).first()) as { n: number | string }).n);
+  const existing = Number(((await db('requester').where('line_user_id', 'like', 'MOCK-%').orWhere('line_user_id', 'like', 'DEMO-%').count({ n: '*' }).first()) as { n: number | string }).n);
   if (existing && !opts.force) throw new Error(`มีผู้ขอจำลองอยู่แล้ว ${existing} คน — รันซ้ำเพื่อสร้างใหม่ให้ใช้: npm run mock -- --force (จะลบข้อมูลจำลองเดิมก่อน)`);
   if (existing) await clearMock();
 
@@ -69,7 +100,7 @@ export async function createMock(opts: { force?: boolean } = {}) {
     const found = await db('hospital').where({ code }).first();
     if (found) hospitalIds.push(found.id);
     else {
-      await db('hospital').insert({ code, name, is_active: true, created_at: stamp, updated_at: stamp });
+      await db('hospital').insert({ code, name, health_region: 12, is_active: true, created_at: stamp, updated_at: stamp });
       hospitalIds.push((await db('hospital').where({ code }).first()).id);
     }
   }
@@ -82,6 +113,28 @@ export async function createMock(opts: { force?: boolean } = {}) {
     const phone2 = i % 3 === 0 ? `074${String(300000 + i * 137).slice(-6)} ต่อ ${100 + i}` : null;
     const id = await requestRepository.insertRequester({ line_user_id: `MOCK-demo${String(i + 1).padStart(2, '0')}`, display_name: `ผู้ขอจำลอง ${STAFF[i]}`, full_name: STAFF[i]!, phone, phone2, hospital_id: hospital, pdpa_accepted_at: iso(now - 50 * 24 * H), });
     requesters.push({ id, name: STAFF[i]!, phone, phone2, hospital });
+  }
+
+  // ผู้ลงทะเบียนตัวอย่างให้หน้า "สมาชิก รพ." (รออนุมัติ 5 · อนุมัติแล้ว 2 · ไม่อนุมัติ 2) — ใช้ลองกดอนุมัติ/ไม่อนุมัติได้จริง
+  for (let i = 0; i < DEMO_MEMBERS.length; i++) {
+    const m = DEMO_MEMBERS[i]!;
+    const id = await requestRepository.insertRequester({
+      line_user_id: `DEMO-reg${String(i + 1).padStart(2, '0')}`,
+      display_name: `ตัวอย่าง LINE ${i + 1}`,
+      full_name: m.name,
+      phone: `081000${String(9000 + i).slice(-4)}`,
+      phone2: null,
+      hospital_id: hospitalIds[(i + 3) % hospitalIds.length]!,
+      pdpa_accepted_at: iso(now - (i + 1) * 6 * H),
+      approval_status: 'PENDING',
+    });
+    await db('requester')
+      .where({ id })
+      .update({
+        approval_status: m.status,
+        created_at: iso(now - (i + 1) * 6 * H),
+        ...(m.status === 'PENDING' ? {} : { decided_by: admin?.id ?? null, decided_at: iso(now - (i + 1) * 3 * H), decided_note: m.note ?? null }),
+      });
   }
 
   type Plan = 'WAITING' | 'CALLED' | 'CALLED_OVERDUE' | 'NEED_DATE' | 'CONFIRMED' | 'DECLINED' | 'CANCELLED';
@@ -158,5 +211,5 @@ export async function createMock(opts: { force?: boolean } = {}) {
     if (status === 'DECLINED') await ev('DECLINED', 'CALLED', 'DECLINED', resolved!, via === 'LINE' ? rq.name : staffLabel, via, 'ญาติขอเลื่อนการส่งตัว');
     if (status === 'CANCELLED') await ev('CANCELLED', called ? 'CALLED' : 'WAITING', 'CANCELLED', resolved!, rq.name, 'LINE', 'ผู้ขอยกเลิกเอง');
   }
-  return { hospitals: hospitalIds.length, requesters: requesters.length, requests: plans.length };
+  return { hospitals: hospitalIds.length, requesters: requesters.length, members: DEMO_MEMBERS.length, requests: plans.length };
 }

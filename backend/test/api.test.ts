@@ -6,8 +6,25 @@
  *    และ "ชื่อต้องลงท้ายด้วย _test" ไม่งั้นเทสต์ไม่ยอมรัน (กันเผลอลบข้อมูลจริง)
  * ทดสอบกับ PostgreSQL: DB_CLIENT=postgres DB_PORT=5432 TEST_DB_NAME=bed_queue_test npm test
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 process.env.NODE_ENV = 'test';
+const shellDb = process.env.DB_NAME; // ค่าที่ตั้งไว้ในเครื่อง/เทอร์มินัลก่อนเทสต์ทับ
 process.env.DB_NAME = process.env.TEST_DB_NAME ?? 'bed_queue_test'; // ต้องตั้งก่อน import config (ค่านี้ชนะ .env)
+
+// กันพลาดร้ายแรง: เทสต์ "ลบตารางทั้งหมด" — ถ้าระบบที่ใช้งานจริง (.env / ตัวแปรเครื่อง) ชี้ฐานเดียวกับฐานเทสต์ ข้อมูลจริงจะหายทุกครั้งที่รัน
+{
+  const envFile = process.env.ENV_FILE ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../.env');
+  const line = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8').split(/\r?\n/).find((l) => /^\s*DB_NAME\s*=/.test(l)) : undefined;
+  const fromEnv = line?.split('=').slice(1).join('=').trim().replace(/^["']|["']$/g, '');
+  for (const [where, name] of [['ไฟล์ .env', fromEnv], ['ตัวแปร DB_NAME ของเครื่อง', shellDb]] as const) {
+    if (name && name.toLowerCase() === process.env.DB_NAME.toLowerCase()) {
+      throw new Error(`เทสต์ไม่ยอมรัน: ${where} ตั้ง DB_NAME="${name}" ซึ่งเป็นฐานเดียวกับฐานของ npm test (ถูกลบทุกครั้ง)\n→ แก้ DB_NAME เป็นฐานของระบบจริง เช่น bed_queue แล้วรันใหม่`);
+    }
+  }
+}
 
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
@@ -1477,9 +1494,31 @@ describe('วันที่เตียงว่าง + ยืนยันจ�
     assert.equal((await isMock(db('bed_request')).whereIn('status', ['CALLED', 'NEED_DATE', 'CONFIRMED']).whereNull('bed_date')).length, 0, 'เรียกแล้ว/รอนัดวัน/ยืนยัน ต้องมีวันที่');
     const need = await isMock(db('bed_request')).where({ status: 'NEED_DATE' }).select('id');
     for (const x of need) assert.deepEqual((await db('request_event').where({ request_id: x.id }).orderBy('id')).map((e: any) => e.event), ['SUBMITTED', 'CALLED', 'DEFERRED']);
+    // ผู้ลงทะเบียนตัวอย่างโผล่ในหน้า "สมาชิก รพ." (รออนุมัติ 5 / อนุมัติ 2 / ไม่อนุมัติ 2) · รพ. ตัวอย่างมีเขตสุขภาพ
+    assert.equal(r.members, 9);
+    assert.equal((await call('POST', '/member/pending-count', {})).data.count >= 5, true);
+    const demo = (await call('POST', '/member/search', { status: 'PENDING', pageSize: 100 })).data.resultList.filter((m: any) => String(m.hospital_name).includes('ตัวอย่าง'));
+    assert.equal(demo.length, 5);
+    assert.ok(demo.every((m: any) => m.full_name.includes('ตัวอย่าง')));
+    const rej = (await call('POST', '/member/search', { status: 'REJECTED', pageSize: 100 })).data.resultList.find((m: any) => m.decided_note === 'เบอร์โทรไม่ตรงกับ รพ.');
+    assert.ok(rej, 'มีตัวอย่างที่ไม่อนุมัติพร้อมเหตุผล');
+    assert.equal((await db('hospital').where({ code: '99001' }).first()).health_region, 12);
+    // กดอนุมัติ/ไม่อนุมัติตัวอย่างได้ — ระบบจดว่าข้าม (ไม่ส่ง LINE จริง) ไม่ใช่ FAILED
+    assert.equal((await call('POST', '/member/approve', { id: demo[0].id })).http, 200);
+    const nlog = await db('notification_log').where({ type: 'MEMBER_APPROVED', requester_id: demo[0].id });
+    assert.equal(nlog.length === 0 || nlog.every((x: any) => x.status === 'SKIPPED'), true);
+    // mock:status นับได้ · ลบแล้วเหลือ 0 · รพ. ตัวอย่างหาย แต่ รพ. จริงที่ไม่ได้อยู่ในชุดตัวอย่างไม่ถูกแตะ
+    const { mockStatus } = await import('../src/mockData');
+    const st = await mockStatus();
+    assert.ok(st.requesters >= 21 && st.requests === 60 && st.hospitals === 8, JSON.stringify(st));
+    await db('hospital').insert({ code: '98765', name: 'รพ.จริงห้ามลบ', is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     const cleared = await clearMock();
     assert.equal(cleared.requests, 60);
+    assert.equal(cleared.hospitals, 8);
     assert.equal(Number(((await db('bed_request').count({ n: '*' }).first()) as { n: number | string }).n), keep);
+    assert.deepEqual(await mockStatus(), { requesters: 0, requests: 0, hospitals: 0, total: 0 });
+    assert.ok(await db('hospital').where({ code: '98765' }).first(), 'รพ. ที่ไม่ได้อยู่ในชุดตัวอย่างต้องไม่ถูกลบ');
+    await db('hospital').where({ code: '98765' }).delete();
   });
 });
 

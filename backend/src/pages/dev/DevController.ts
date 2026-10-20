@@ -17,6 +17,7 @@ import { config } from '../../core/config';
 import { db } from '../../core/db';
 import { badRequest, idField, notFound, ok, parse } from '../../core/http';
 import { getSetting } from '../../core/settings';
+import { clearMock } from '../../mockData';
 import { answerOf, requesterProfileDto, respondShape, submitDto } from '../request/RequestDto';
 import { hospitalCodeField } from '../hospital/HospitalDto';
 import { requestRepository, requesterService } from '../request';
@@ -74,8 +75,8 @@ devRouter.post('/mock/create', async (req: Request, res: Response) => {
 });
 
 devRouter.post('/mock/clear', async (_req: Request, res: Response) => {
-  const r = await requestRepository.deleteMockData();
-  res.json(ok(r, `ลบผู้ขอจำลอง ${r.requesters} คน และคำขอ ${r.requests} รายการ`));
+  const r = await clearMock();
+  res.json(ok(r, `ลบผู้ขอจำลอง ${r.requesters} คน คำขอ ${r.requests} รายการ และ รพ. ตัวอย่าง ${r.hospitals} แห่ง`));
 });
 
 /** ค้นชื่อ รพ. จากรหัส (ฟอร์มสมัครของผู้ขอจำลองใช้ร่วมกับหน้าจริง) */

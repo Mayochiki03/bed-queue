@@ -180,7 +180,7 @@ export class RequestRepository {
   /** ลบผู้ขอจำลองทั้งหมดพร้อมคำขอและประวัติของพวกเขา — คืนจำนวนที่ลบ */
   async deleteMockData(): Promise<{ requesters: number; requests: number }> {
     return db.transaction(async (trx) => {
-      const ids = (await trx('requester').where('line_user_id', 'like', 'MOCK-%').select('id')).map((r: { id: number }) => r.id);
+      const ids = (await trx('requester').where('line_user_id', 'like', 'MOCK-%').orWhere('line_user_id', 'like', 'DEMO-%').select('id')).map((r: { id: number }) => r.id);
       if (!ids.length) return { requesters: 0, requests: 0 };
       const reqIds = (await trx('bed_request').whereIn('requester_id', ids).select('id')).map((r: { id: number }) => r.id);
       if (reqIds.length) {

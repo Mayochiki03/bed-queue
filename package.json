@@ -1,6 +1,6 @@
 {
   "name": "bed-queue",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "type": "module",
   "description": "ระบบรับคำขอเตียงผู้ป่วยจากโรงพยาบาลอื่น + จัดคิว + แจ้งเตือน LINE + สถิติ (สร้างบนตัวกลาง app-core-kit)",
@@ -19,6 +19,7 @@
     "db:reset": "npm run db -w backend -- reset",
     "seed": "npm run db -w backend -- seed",
     "mock": "npm run db -w backend -- mock",
+    "mock:status": "npm run db -w backend -- mock-status",
     "mock:clear": "npm run db -w backend -- mock-clear"
   },
   "devDependencies": {

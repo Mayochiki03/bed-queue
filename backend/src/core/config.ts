@@ -98,6 +98,15 @@ export const config = {
   },
 };
 
+// กันพลาดร้ายแรง: ฐานข้อมูลที่ชื่อลงท้าย _test คือฐานของ `npm test` ซึ่ง "ลบตารางทั้งหมดแล้วสร้างใหม่" ทุกครั้งที่รัน
+// ถ้าระบบที่ใช้งานจริงชี้มาที่ฐานนี้ ทุกครั้งที่รันเทสต์ ผู้ใช้/2FA/ตั้งค่า/ข้อมูลหลักจะกลับเป็นค่าเริ่มต้น → ไม่ยอมเริ่ม
+if (!config.isTest && /_test$/i.test(config.db.database) && env('ALLOW_TEST_DB', '') !== 'true') {
+  throw new Error(
+    `DB_NAME="${config.db.database}" เป็นฐานข้อมูลสำหรับ npm test (ถูกลบทุกครั้งที่รันเทสต์) ห้ามใช้เป็นฐานของระบบจริง\n` +
+      '→ แก้ DB_NAME ใน .env เป็นฐานข้อมูลของระบบ เช่น DB_NAME=bed_queue (สร้างด้วย database/init.sql)',
+  );
+}
+
 if (config.isProd && (config.jwtSecret.length < 32 || config.jwtSecret.includes('change-me'))) {
   throw new Error('production ต้องตั้ง JWT_SECRET ยาวอย่างน้อย 32 ตัวอักษร (รัน npm run setup เพื่อสร้างให้)');
 }
