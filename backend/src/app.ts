@@ -55,7 +55,8 @@ export function createApp() {
   const index = path.join(config.frontendDist, 'index.html');
   if (fs.existsSync(index)) {
     app.use(express.static(config.frontendDist, { index: false }));
-    app.get('/', (_req, res) => res.redirect('/admin/'));
+    // ip:พอร์ต เฉย ๆ → หน้า "ภาพรวมคิว" (ถ้าผู้ดูแลเปิดให้ดูได้โดยไม่ล็อกอิน) ไม่งั้นหน้านั้นพาไปหน้า login เอง · r=1 = มาจากหน้าแรก (คนที่ล็อกอินค้างอยู่จะถูกพาไปหน้าหลักของตัวเอง)
+    app.get('/', (_req, res) => res.redirect('/admin/overview?r=1'));
     app.get(/^\/admin(\/.*)?$/, (_req, res) => res.sendFile(index));
   }
 

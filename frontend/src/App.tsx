@@ -9,8 +9,19 @@ import { hasRole, useSession } from './lib/session';
 import Forbidden from './pages/Forbidden';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
+import PublicOverview from './pages/PublicOverview';
 
+/** หน้าที่เปิดได้โดยไม่ล็อกอิน (ผู้ดูแลต้องเปิดสวิตช์ + เฉพาะวงเครือข่ายภายใน — เซิร์ฟเวอร์เป็นคนตัดสิน) · ที่เหลือต้องล็อกอินทั้งหมด */
 export default function App() {
+  return (
+    <Routes>
+      <Route path="/overview" element={<PublicOverview />} />
+      <Route path="*" element={<StaffApp />} />
+    </Routes>
+  );
+}
+
+function StaffApp() {
   const { ready, user } = useSession();
 
   if (!ready) return <Spinner />;

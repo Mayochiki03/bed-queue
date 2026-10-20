@@ -18,6 +18,8 @@ requestService.hooks.notify = (type, requestId, toRequesterId, extra) => notific
 // อนุมัติสมาชิกแล้วแจ้งทาง LINE (เฉพาะเมื่อสถานะเปลี่ยนเป็นอนุมัติจริง)
 memberService.hooks.approved = (requesterId) => notificationService.notifyMemberApproved(requesterId);
 
+memberService.hooks.rejected = (requesterId, note) => notificationService.notifyMemberRejected(requesterId, note);
+
 export const notificationPage = definePage({
   name: 'notification',
   minRole: 'ADMIN',

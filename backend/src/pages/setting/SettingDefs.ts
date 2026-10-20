@@ -35,6 +35,14 @@ export const settingDefs: SettingDef[] = [
 
   // ---------- Dashboard ----------
   { key: 'dashboard_default_days', label: 'ช่วงเวลาเริ่มต้นของ Dashboard (วัน)', category: 'dashboard', type: 'INT', default: 30, min: 1, max: 3650 },
+  {
+    key: 'public_dashboard_enabled',
+    label: 'เปิดให้ดู Dashboard โดยไม่ต้องล็อกอิน (เฉพาะในเครือข่ายโรงพยาบาล)',
+    category: 'dashboard',
+    type: 'BOOL',
+    default: false,
+    hint: 'เปิดแล้วเครื่องในวง LAN เข้าหน้า /admin/overview ดูตัวเลขรวมได้เลย (ดูอย่างเดียว ไม่มีชื่อผู้ป่วย/เบอร์โทร) · หน้าอื่นยังต้องล็อกอินเหมือนเดิม · ไม่เปิดผ่านอินเทอร์เน็ต/Cloudflare Tunnel · การเปิด-ปิดถูกบันทึกในประวัติการใช้งาน',
+  },
   { key: 'dashboard_top_n', label: 'จำนวนอันดับเริ่มต้นของกราฟโรงพยาบาล', category: 'dashboard', type: 'INT', default: 10, min: 3, max: 50 },
 
   // ---------- ผู้ขอ ----------

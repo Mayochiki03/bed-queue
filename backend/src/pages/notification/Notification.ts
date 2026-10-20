@@ -4,7 +4,7 @@
  * ออกแบบตามระบบจองคิวนวด: แต่ละชนิดเปิด/ปิดได้ แก้หัวข้อ-ข้อความได้ (เก็บในตาราง notification_template)
  * ข้อความตั้งต้นไม่ใส่ชื่อผู้ป่วยโดยตั้งใจ — ข้อความผ่านเซิร์ฟเวอร์ LINE (นอกหน่วยงาน) ใช้เลขที่คำขอแทน (PDPA)
  */
-export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED' | 'MEMBER_APPROVED';
+export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED' | 'MEMBER_APPROVED' | 'MEMBER_REJECTED';
 
 export type TemplateDef = {
   type: NotifyType;
@@ -76,6 +76,14 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
     button: 'เปิดระบบขอเตียง',
   },
   {
+    type: 'MEMBER_REJECTED',
+    name: 'ไม่อนุมัติสมาชิก (ลงทะเบียนผ่าน LINE)',
+    when: 'ส่งหาผู้ลงทะเบียนเมื่อเจ้าหน้าที่กด "ไม่อนุมัติ" ในหน้า สมาชิก รพ. (ไม่ส่งซ้ำถ้าไม่อนุมัติอยู่แล้ว) · ถ้าเจ้าหน้าที่กรอกเหตุผลไว้ จะแสดงต่อท้าย — ห้ามใส่ข้อมูลผู้ป่วยในเหตุผล',
+    title: 'ยังไม่ได้รับอนุมัติ',
+    body: 'คำขอลงทะเบียนในนาม {hospital} ยังไม่ได้รับอนุมัติ\n{note}\nหากข้อมูลไม่ถูกต้องหรือมีข้อสงสัย กรุณาติดต่อเจ้าหน้าที่ศูนย์ประสานเตียง',
+    enabled: true,
+  },
+  {
     type: 'SUBMITTED',
     name: 'ยืนยันว่าได้รับคำขอ',
     when: 'ส่งทันทีที่ผู้ขอส่งคำขอสำเร็จ (ปิดไว้เป็นค่าเริ่มต้น เพราะผู้ขอเห็นสถานะในหน้าจออยู่แล้ว)',
@@ -104,6 +112,7 @@ export const TEMPLATE_VARS: { key: string; label: string; sample: string }[] = [
   { key: 'reason', label: 'เหตุผลการส่งต่อ', sample: 'ต้องการเตียงบำบัด' },
   { key: 'bed_date', label: 'วันที่เตียงว่าง / วันที่ส่งตัว', sample: '20 ต.ค. 2569' },
   { key: 'staff_name', label: 'ชื่อเจ้าหน้าที่ผู้ยืนยัน (ใช้กับข้อความยืนยันวัน)', sample: 'สมชาย ใจดี' },
+  { key: 'note', label: 'เหตุผลที่เจ้าหน้าที่กรอก (ใช้กับข้อความไม่อนุมัติสมาชิก — ว่างได้)', sample: 'เบอร์โทรไม่ตรงกับ รพ.' },
   { key: 'timeout_hours', label: 'เวลารอยืนยัน (ชั่วโมง)', sample: '24' },
 ];
 

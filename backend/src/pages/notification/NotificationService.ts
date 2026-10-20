@@ -99,6 +99,16 @@ export class NotificationService {
     });
   }
 
+  /** แจ้งผู้ลงทะเบียนว่าไม่ได้รับอนุมัติ (พร้อมเหตุผลถ้ามี) — ไม่ throw */
+  async notifyMemberRejected(requesterId: number, note: string): Promise<void> {
+    await this.guarded('MEMBER_REJECTED', null, async () => {
+      const m = await this.repo.memberContext(requesterId);
+      if (!m) return null;
+      const vars = { request_no: '', hospital: m.hospital_name ?? '', requester_name: m.full_name, color: '-', reason: '-', bed_date: '-', staff_name: 'เจ้าหน้าที่', timeout_hours: '', note: note.trim() ? `เหตุผล: ${note.trim()}` : '' };
+      return { target: { id: m.id, line_user_id: m.line_user_id }, vars, hasBedDate: false };
+    });
+  }
+
   /** ขั้นตอนร่วมของทุกชนิด: ตรวจเปิด/ปิด → ตรวจปลายทาง/การเชื่อมต่อ/โควต้า → เติมข้อความ → ส่ง → จดผล */
   private async guarded(type: NotifyType, requestId: number | null, build: () => Promise<{ target: { id: number | null; line_user_id: string | null } | undefined; vars: Record<string, string>; hasBedDate: boolean } | null>): Promise<void> {
     try {
@@ -122,6 +132,7 @@ export class NotificationService {
       const title = tpl?.title ?? def.title;
       const rawBody = tpl?.body ?? def.body;
       let text = fill(rawBody, vars);
+      if (type === 'MEMBER_REJECTED') text = text.replace(/\n{2,}/g, '\n').trim(); // ไม่กรอกเหตุผล → ไม่ทิ้งบรรทัดว่าง
       // ข้อความที่แอดมินเคยแก้ไว้ก่อนมีเรื่องวันที่ อาจไม่มี {bed_date}/{staff_name} — เติมท้ายข้อความให้ ผู้ขอจะได้ไม่พลาดวันและผู้ยืนยัน
       if ((type === 'CALLED' || type === 'CONFIRMED') && hasBedDate && !rawBody.includes('{bed_date}')) text += `\n${type === 'CALLED' ? 'เตียงว่างรับวันที่' : 'วันที่ส่งตัว'}: ${vars.bed_date}`;
       if (type === 'CONFIRMED' && !rawBody.includes('{staff_name}')) text += `\nยืนยันโดยเจ้าหน้าที่ ${vars.staff_name}`;

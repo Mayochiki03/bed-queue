@@ -14,6 +14,7 @@ import { logPage } from './log';
 import { memberPage } from './member';
 import { notificationPage } from './notification';
 import { lookupPage } from './lookup';
+import { pubdashPage } from './pubdash';
 import { requestPage } from './request';
 import { requesterPage } from './requester';
 import { settingPage } from './setting';
@@ -25,6 +26,7 @@ export const pages: PageDef[] = [
   lookupPage, // ข้อมูลหลัก: สี / สารเสพติด / เหตุผล
   requestPage, // คำขอเตียง (ตาราง — API มาใน Round 2)
   dashboardPage, // สรุปตัวเลข/กราฟหน้าหลัก
+  pubdashPage, // Dashboard ดูอย่างเดียวไม่ต้องล็อกอิน (เฉพาะวงภายใน · ปิดเป็นค่าเริ่มต้น) — ตรวจสิทธิ์เองใน router
   exportPage, // ส่งออก Excel (รายงาน+กราฟ+ข้อมูลละเอียด)
   notificationPage, // ข้อความแจ้งเตือน LINE (เลือกเปิด/ปิด + ประวัติการส่ง)
   memberPage, // สมาชิก รพ. — อนุมัติผู้ที่ลงทะเบียนผ่าน LINE

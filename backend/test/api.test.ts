@@ -892,13 +892,13 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
   let rid = 0;
   const logs = async (type?: string) => (await call('POST', '/notification/logs', { type: type ?? '' })).data.resultList as any[];
 
-  it('ตั้งต้น: 8 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
+  it('ตั้งต้น: 9 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
     staff = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     assert.equal((await call('POST', '/notification/templates', {}, staff)).http, 403);
     const t = (await call('POST', '/notification/templates', {})).data;
-    assert.equal(t.templates.length, 8);
+    assert.equal(t.templates.length, 9);
     const on = Object.fromEntries(t.templates.map((x: any) => [x.type, x.is_enabled]));
-    assert.deepEqual(on, { CALLED: true, CONFIRMED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, MEMBER_APPROVED: true, SUBMITTED: false, REOPENED: false });
+    assert.deepEqual(on, { CALLED: true, CONFIRMED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, MEMBER_APPROVED: true, MEMBER_REJECTED: true, SUBMITTED: false, REOPENED: false });
     // ข้อความตั้งต้นไม่มีชื่อผู้ป่วย (PDPA)
     assert.ok(t.templates.every((x: any) => !/patient_name|ชื่อผู้ป่วย/.test(x.body)));
   });
@@ -1621,6 +1621,19 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
       assert.equal(approvedLogs[0].request_id, null);
       assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
       assert.equal(pushes.length, 1, 'อนุมัติซ้ำไม่ส่งซ้ำ');
+      // ไม่อนุมัติ → แจ้งผู้ลงทะเบียนพร้อมเหตุผล (ถ้ากรอก) · กดซ้ำไม่แจ้งซ้ำ · ไม่กรอกเหตุผลไม่มีบรรทัดว่าง · แล้วอนุมัติกลับเพื่อให้เทสต์ถัดไปทำงานต่อ
+      assert.equal((await call('POST', '/member/reject', { id: list[0].id, note: 'เบอร์โทรไม่ตรงกับ รพ.' })).http, 200);
+      assert.equal(pushes.length, 2);
+      const rej = JSON.stringify(pushes[1]!.messages[0]);
+      assert.ok(rej.includes('ยังไม่ได้รับอนุมัติ') && rej.includes('เหตุผล: เบอร์โทรไม่ตรงกับ รพ.'), rej);
+      assert.equal((await call('POST', '/member/reject', { id: list[0].id, note: 'ซ้ำ' })).http, 200);
+      assert.equal(pushes.length, 2, 'ไม่อนุมัติซ้ำไม่ส่งซ้ำ');
+      assert.equal((await db('notification_log').where({ type: 'MEMBER_REJECTED', requester_id: list[0].id })).length, 1);
+      assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
+      assert.equal(pushes.length, 3, 'อนุมัติกลับหลังไม่อนุมัติ = สถานะเปลี่ยนจริง ส่งอีกครั้ง');
+      assert.equal((await call('POST', '/member/reject', { id: list[0].id })).http, 200);
+      assert.ok(!JSON.stringify(pushes[3]!.messages[0]).includes('เหตุผล:'), 'ไม่กรอกเหตุผลไม่แสดงหัวข้อเหตุผล');
+      assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
     } finally {
       globalThis.fetch = prevFetch;
       await save({ line_channel_token: '' });
@@ -1820,5 +1833,106 @@ describe('audit อัตโนมัติ', () => {
     const r = await call('POST', '/log/search', { page: 'hospital', action: 'ADD' });
     assert.equal(r.http, 200);
     assert.ok(r.data.totalRow >= 2);
+  });
+});
+
+describe('Dashboard ไม่ต้องล็อกอิน (pubdash) — เฉพาะวงภายใน + ปิดเป็นค่าเริ่มต้น + หน้าอื่นต้องล็อกอินเสมอ', () => {
+  const setEnabled = (v: boolean) => call('POST', '/setting/save', { values: { public_dashboard_enabled: v } });
+  const anon = (path: string, headers: Record<string, string> = {}) => fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: '{}' });
+
+  it('ปิดเป็นค่าเริ่มต้น: status บอกว่าปิด · data ถูกปฏิเสธ 403', async () => {
+    const st = await (await anon('/pubdash/status')).json();
+    assert.equal(st.data.enabled, false);
+    assert.equal((await anon('/pubdash/data')).status, 403);
+  });
+
+  it('เปิดสวิตช์แล้วดูได้โดยไม่ล็อกอิน · มีแต่ตัวเลขรวม (ไม่มีชื่อผู้ป่วย/ผู้ขอ/เบอร์) · widget ที่ซ่อนไม่ออก', async () => {
+    assert.equal((await setEnabled(true)).http, 200);
+    try {
+      const res = await anon('/pubdash/data');
+      assert.equal(res.status, 200);
+      const j = await res.json();
+      assert.ok(typeof j.data.summary.queue.waiting === 'number');
+      assert.ok(Array.isArray(j.data.widgets));
+      assert.ok(j.data.widgets.every((w: any) => w.is_active), 'widget ที่ซ่อนห้ามออก');
+      const raw = JSON.stringify(j);
+      for (const k of ['patient_name', 'requester_name', 'phone', 'line_user_id', 'password']) assert.ok(!raw.includes(k), `รั่ว: ${k}`);
+      assert.equal((await anon('/pubdash/data', { 'content-type': 'application/json' })).status, 200);
+      assert.equal((await call('POST', '/pubdash/data', { days: 0 }, false)).http, 400, 'ช่วงเวลาผิดรูปแบบยังตรวจ 400');
+    } finally {
+      await setEnabled(false);
+    }
+    assert.equal((await anon('/pubdash/data')).status, 403, 'ปิดสวิตช์แล้วใช้ไม่ได้ทันที');
+  });
+
+  it('คำขอที่มี header ของ proxy/tunnel ถูกปฏิเสธ แม้เปิดสวิตช์ (กัน X-Forwarded-For ปลอม และการเอาพอร์ตนี้ไปต่อ tunnel)', async () => {
+    await setEnabled(true);
+    try {
+      for (const h of [{ 'x-forwarded-for': '10.1.2.3' }, { 'x-forwarded-for': '8.8.8.8' }, { 'cf-connecting-ip': '1.2.3.4' }, { 'x-real-ip': '10.0.0.1' }, { forwarded: 'for=10.0.0.1' }, { 'cf-ray': 'abc' }] as Record<string, string>[]) {
+        assert.equal((await anon('/pubdash/data', h)).status, 403, JSON.stringify(h));
+        assert.equal((await anon('/pubdash/status', h)).status, 403, JSON.stringify(h));
+      }
+    } finally {
+      await setEnabled(false);
+    }
+  });
+
+  it('ตรวจที่อยู่ภายใน: 10/8 172.16/12 192.168/16 127/8 ::1 fe80 fc00 ผ่าน · IP สาธารณะ/รูปแบบแปลกไม่ผ่าน', async () => {
+    const { isPrivateIp } = await import('../src/pages/pubdash/LanGuard');
+    for (const ip of ['10.0.0.1', '10.255.255.255', '172.16.0.1', '172.31.255.255', '192.168.1.50', '127.0.0.1', '::1', '::ffff:192.168.0.9', 'fe80::1', 'fd12:3456::1']) assert.equal(isPrivateIp(ip), true, ip);
+    for (const ip of ['8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.0.1', '11.0.0.1', '100.64.0.1', '2001:db8::1', '10.0.0.256', '', 'abc']) assert.equal(isPrivateIp(ip), false, ip);
+    assert.equal(isPrivateIp(undefined), false);
+  });
+
+  it('ทุกหน้าของเจ้าหน้าที่ยังต้องล็อกอิน (401) · หน้าที่ไม่ตรวจ session ต้องเป็นรายการที่ตั้งใจเท่านั้น', async () => {
+    const { pages } = await import('../src/pages');
+    assert.deepEqual(
+      pages.filter((p) => p.access === 'public').map((p) => p.name).sort(),
+      ['line', 'pubdash', 'requester'],
+      'มีหน้าใหม่ที่ตั้ง access: public — ต้องตรวจสิทธิ์เองและแก้รายการนี้อย่างตั้งใจ',
+    );
+    await setEnabled(true); // เปิดสวิตช์ไว้ระหว่างตรวจ เพื่อพิสูจน์ว่าการเปิด pubdash ไม่ทำให้หน้าอื่นหลุด
+    try {
+      for (const p of pages.filter((x) => x.access !== 'public')) {
+        for (const action of ['search', 'get', 'add', 'summary', 'widget/data', 'export', 'templates', 'list']) {
+          const r = await anon(`/${p.name}/${action}`);
+          assert.equal(r.status, 401, `/api/${p.name}/${action} ต้อง 401 เมื่อไม่ล็อกอิน (ได้ ${r.status})`);
+        }
+      }
+      // endpoint ของ dashboard เดิม (ที่ใช้ตอนล็อกอิน) ยังต้องล็อกอิน แม้ pubdash เปิดอยู่
+      assert.equal((await anon('/dashboard/summary')).status, 401);
+      assert.equal((await anon('/dashboard/widget/data')).status, 401);
+      // STAFF ล็อกอินแล้วก็ยังห้ามเรียกของ ADMIN เหมือนเดิม
+      assert.equal((await call('POST', '/setting/save', { values: { public_dashboard_enabled: false } }, false)).http, 401);
+    } finally {
+      await setEnabled(false);
+    }
+  });
+
+  it('พิมพ์ ip:พอร์ตเฉย ๆ (/) → พาไปหน้าภาพรวมคิว · /admin/overview เปิดได้โดยไม่ล็อกอิน (หน้าเว็บ, ข้อมูลยังถูกคุมด้วย API)', async () => {
+    const { default: fs } = await import('node:fs');
+    const path = await import('node:path');
+    if (!fs.existsSync(path.join(config.frontendDist, 'index.html'))) return; // ยังไม่ได้ build หน้าเว็บ — ข้าม
+    const origin = base.replace(/\/api$/, '');
+    const root = await fetch(origin + '/', { redirect: 'manual' });
+    assert.equal(root.status, 302);
+    assert.equal(root.headers.get('location'), '/admin/overview?r=1');
+    assert.equal((await fetch(origin + '/admin/overview')).status, 200);
+  });
+
+  it('พอร์ต public (Cloudflare Tunnel) ไม่มี pubdash · การเปิด/ปิดสวิตช์ถูกบันทึกใน audit · ดู pubdash ไม่ท่วม audit', async () => {
+    const { createPublicApp } = await import('../src/publicApp');
+    const srv = createPublicApp().listen(0);
+    try {
+      const pub = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+      for (const a of ['status', 'data']) assert.equal((await fetch(`${pub}/api/pubdash/${a}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 404);
+    } finally {
+      srv.close();
+    }
+    await new Promise((r) => setTimeout(r, 200));
+    const saves = (await db('audit_logs').where({ page: 'setting', status_code: 200 }).whereRaw('detail like ?', ['%public_dashboard_enabled%'])) as any[];
+    assert.ok(saves.length >= 2, 'ต้องมีบันทึกการเปิด/ปิดสวิตช์');
+    assert.ok(saves.every((r) => r.username), 'ระบุได้ว่าใครเปิด/ปิด');
+    assert.equal((await db('audit_logs').where({ page: 'pubdash' })).length, 0);
   });
 });

@@ -6,6 +6,7 @@ import { Check, X } from 'lucide-react';
 import { useState } from 'react';
 import { APPROVAL_LABEL, memberApi, type ApprovalStatus, type MemberRow } from '../../api/memberApi';
 import { Button } from '../../components/Button';
+import { Modal } from '../../components/Modal';
 import { DataTable, type Column } from '../../components/DataTable';
 import { FilterInput, FilterSelect } from '../../components/Fields';
 import { PageCard, PageTitle } from '../../components/PageCard';
@@ -26,6 +27,8 @@ export default function MemberTable() {
   const popup = usePopup();
   const table = useTableData(memberApi.search, { q: '', status: 'PENDING' });
   const [busy, setBusy] = useState(0);
+  const [rejecting, setRejecting] = useState<MemberRow | null>(null);
+  const [note, setNote] = useState('');
 
   async function approve(row: MemberRow) {
     const message = `${row.full_name}\n${row.hospital_code} ${row.hospital_name}\nเบอร์ ${row.phone}\n\nเมื่ออนุมัติ จะส่งคำขอและเห็นคำขอของ รพ. นี้ร่วมกับเจ้าหน้าที่คนอื่นของ รพ. เดียวกันได้ทั้งหมด`;
@@ -38,11 +41,18 @@ export default function MemberTable() {
     } else popup.error(res.message);
   }
 
-  async function reject(row: MemberRow) {
-    if (!(await popup.confirm({ title: 'ไม่อนุมัติสมาชิก', message: `${row.full_name} (${row.hospital_name}) จะใช้ระบบไม่ได้ — เปลี่ยนใจอนุมัติภายหลังได้`, danger: true, confirmText: 'ไม่อนุมัติ' }))) return;
+  function askReject(row: MemberRow) {
+    setNote('');
+    setRejecting(row);
+  }
+
+  async function reject() {
+    const row = rejecting;
+    if (!row) return;
     setBusy(row.id);
-    const res = await memberApi.reject(row.id, '').finally(() => setBusy(0));
+    const res = await memberApi.reject(row.id, note.trim()).finally(() => setBusy(0));
     if (res.ok) {
+      setRejecting(null);
       popup.success('บันทึกแล้ว');
       table.reload();
     } else popup.error(res.message);
@@ -57,7 +67,7 @@ export default function MemberTable() {
             </Button>
           )}
           {r.approval_status !== 'REJECTED' && (
-            <Button size="sm" variant="ghost" className="whitespace-nowrap text-danger" disabled={busy === r.id} onClick={() => void reject(r)}>
+            <Button size="sm" variant="ghost" className="whitespace-nowrap text-danger" disabled={busy === r.id} onClick={() => askReject(r)}>
               <X className="size-4" />
               ไม่อนุมัติ
             </Button>
@@ -132,6 +142,44 @@ export default function MemberTable() {
         <DataTable columns={columns} rows={table.rows} rowKey={(r) => r.id} loading={table.loading} />
         <Pagination paging={table.paging} onPage={table.goPage} onPageSize={table.changePageSize} />
       </PageCard>
+      <Modal
+        open={!!rejecting}
+        onClose={() => setRejecting(null)}
+        size="sm"
+        title="ไม่อนุมัติสมาชิก"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setRejecting(null)}>
+              ยกเลิก
+            </Button>
+            <Button variant="danger" loading={!!rejecting && busy === rejecting.id} onClick={() => void reject()}>
+              ไม่อนุมัติ
+            </Button>
+          </>
+        }
+      >
+        {rejecting && (
+          <div className="flex flex-col gap-3 text-sm">
+            <p>
+              <b>{rejecting.full_name}</b> ({rejecting.hospital_name}) จะใช้ระบบไม่ได้ — เปลี่ยนใจอนุมัติภายหลังได้
+              <br />
+              ระบบจะส่งข้อความแจ้งผู้ลงทะเบียนทาง LINE ว่ายังไม่ได้รับอนุมัติ (ปิดข้อความนี้ได้ที่หน้า "ข้อความแจ้งเตือน")
+            </p>
+            <label className="flex flex-col gap-1 font-medium text-foreground">
+              เหตุผล (ไม่บังคับ — จะแสดงให้ผู้ลงทะเบียนเห็นใน LINE)
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                maxLength={200}
+                rows={3}
+                placeholder="เช่น เบอร์โทรไม่ตรงกับ รพ. กรุณาลงทะเบียนใหม่"
+                className="w-full rounded-md border border-border bg-card px-3 py-2 text-[15px] font-normal text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <span className="text-xs font-normal text-muted-foreground">อย่าใส่ข้อมูลผู้ป่วย — ข้อความผ่านเซิร์ฟเวอร์ LINE · {note.length}/200</span>
+            </label>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

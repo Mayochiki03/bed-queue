@@ -8,7 +8,7 @@ import type { MemberRepository } from './MemberRepository';
 
 export class MemberService {
   /** ต่อกับการแจ้งเตือน LINE (ผูกไว้ที่ pages/notification/index.ts) */
-  readonly hooks: { approved?: (requesterId: number) => Promise<void> } = {};
+  readonly hooks: { approved?: (requesterId: number) => Promise<void>; rejected?: (requesterId: number, note: string) => Promise<void> } = {};
 
   constructor(private repo: MemberRepository) {}
 
@@ -35,8 +35,9 @@ export class MemberService {
   }
 
   async reject(id: number, note: string, userId: number) {
-    await this.mustFind(id);
+    const m = await this.mustFind(id);
     await this.repo.decide(id, 'REJECTED', userId, note || null);
+    if (m.approval_status !== 'REJECTED') await this.hooks.rejected?.(id, note); // กดซ้ำไม่ส่งซ้ำ
     return { id };
   }
 }

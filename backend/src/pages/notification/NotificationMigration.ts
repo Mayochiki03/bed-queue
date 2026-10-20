@@ -49,4 +49,15 @@ export const notificationMigrations: Migration[] = [
       await db('notification_template').where({ type: 'MEMBER_APPROVED' }).delete();
     },
   },
+  {
+    // ข้อความ "ไม่อนุมัติสมาชิก" (v0.10.0)
+    name: '20261020_22_notification_member_rejected',
+    async up(db) {
+      const d = TEMPLATE_DEFS.find((x) => x.type === 'MEMBER_REJECTED')!;
+      if (!(await db('notification_template').where({ type: d.type }).first())) await db('notification_template').insert({ type: d.type, title: d.title, body: d.body, is_enabled: d.enabled, updated_at: nowIso() });
+    },
+    async down(db) {
+      await db('notification_template').where({ type: 'MEMBER_REJECTED' }).delete();
+    },
+  },
 ];
