@@ -8,6 +8,7 @@ import { DataTable, type Column } from '../../components/DataTable';
 import { FilterInput, FilterSelect } from '../../components/Fields';
 import { PageCard, PageTitle } from '../../components/PageCard';
 import { Pagination } from '../../components/Pagination';
+import { Switch } from '../../components/Switch';
 import { usePopup } from '../../components/Popup';
 import { useTableData } from '../../hooks/useTableData';
 import { MSG } from '../../lib/messages';
@@ -28,6 +29,14 @@ export default function LookupTable() {
     }
   }
 
+  async function toggleActive(row: Lookup, active: boolean) {
+    const res = await lookupApi.update(row.id, { label: row.label, color: row.color ?? '', sort_order: row.sort_order, is_active: active ? 'Y' : 'N' });
+    if (res.ok) {
+      popup.success(active ? `เปิดใช้ "${row.label}" แล้ว` : `ปิด "${row.label}" แล้ว — ไม่ขึ้นให้เลือกในคำขอใหม่`);
+      table.reload();
+    } else popup.error(res.message);
+  }
+
   const columns: Column<Lookup>[] = [
     { header: 'ประเภท', cell: (r) => lookupTypeLabel(r.type), className: 'hidden sm:table-cell' },
     { header: 'ชื่อที่แสดง', 
@@ -42,9 +51,14 @@ export default function LookupTable() {
     { header: 'รหัส', cell: (r) => r.code, className: 'hidden md:table-cell' },
     { header: 'ลำดับ', cell: (r) => r.sort_order, className: 'hidden md:table-cell' },
     {
-      header: 'สถานะ',
-      className: 'hidden sm:table-cell',
-      cell: (r) => <span className={r.is_active ? 'whitespace-nowrap rounded bg-success-soft px-2 py-0.5 text-xs text-success-ink' : 'whitespace-nowrap rounded bg-neutral-soft px-2 py-0.5 text-xs text-neutral-ink'}>{r.is_active ? 'ใช้งาน' : 'ปิด'}</span>,
+      header: 'ใช้งาน',
+      align: 'center',
+      // สวิตช์กดสลับได้ทันทีจากตาราง (ไม่ต้องเข้าไปแก้ทีละรายการ) — ปิดแล้วจะไม่ขึ้นให้เลือกตอนสร้างคำขอใหม่ แต่คำขอเก่ายังเห็นค่าเดิม
+      cell: (r) => (
+        <span onClick={(e) => e.stopPropagation()} className="inline-flex whitespace-nowrap max-sm:[&_.block]:sr-only">
+          <Switch checked={!!r.is_active} onChange={(v) => void toggleActive(r, v)} label={r.is_active ? 'ใช้งาน' : 'ปิด'} />
+        </span>
+      ),
     },
     {
       header: 'จัดการ',
@@ -64,7 +78,7 @@ export default function LookupTable() {
 
   return (
     <>
-      <PageTitle hint="รายการที่มีคำขอใช้อยู่ลบไม่ได้ — ให้ปิดใช้งานแทน เพื่อไม่ให้สถิติย้อนหลังเพี้ยน">สี / สารเสพติด / เหตุผลการส่งต่อ</PageTitle>
+      <PageTitle hint="ไม่ใช้รายการไหน ให้กดสวิตช์ “ใช้งาน” ปิดได้เลย (คำขอเก่ายังเห็นค่าเดิม สถิติไม่เพี้ยน) — รายการที่มีคำขอใช้อยู่ลบไม่ได้">สี / สารเสพติด / เหตุผลการส่งต่อ</PageTitle>
       <PageCard className="mb-4">
         <div className="grid gap-3 md:grid-cols-3">
           <FilterSelect label="ประเภท" value={table.draft.type} onChange={(v) => table.setDraft('type', v)} options={LOOKUP_TYPE_OPTIONS} />

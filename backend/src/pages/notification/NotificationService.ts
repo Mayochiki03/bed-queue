@@ -71,14 +71,44 @@ export class NotificationService {
    * toRequesterId: ส่งหาผู้ขออีกคน (เช่น โอนเคส ส่งหาผู้ขอคนใหม่) ไม่ใส่ = ผู้ขอเจ้าของคำขอ
    */
   async notify(type: NotifyType, requestId: number, toRequesterId?: number, extra: { staff_name?: string } = {}): Promise<void> {
+    await this.guarded(type, requestId, async () => {
+      const ctx = await this.repo.requestContext(requestId);
+      if (!ctx) return null;
+      const target = toRequesterId ? await this.repo.requesterLine(toRequesterId) : { id: ctx.requester_id, line_user_id: ctx.line_user_id };
+      const vars = {
+        request_no: ctx.request_no ?? `#${ctx.id}`,
+        hospital: ctx.hospital_name ?? '',
+        requester_name: ctx.requester_name,
+        color: ctx.color_name ?? '-',
+        reason: ctx.reason_name ?? '-',
+        bed_date: formatThaiDate(ctx.bed_date) || '-',
+        staff_name: extra.staff_name ?? 'เจ้าหน้าที่',
+        timeout_hours: '',
+      };
+      return { target, vars, hasBedDate: !!ctx.bed_date };
+    });
+  }
+
+  /** แจ้งผู้ลงทะเบียนว่าได้รับอนุมัติแล้ว (ไม่ผูกกับคำขอ) — ไม่ throw */
+  async notifyMemberApproved(requesterId: number): Promise<void> {
+    await this.guarded('MEMBER_APPROVED', null, async () => {
+      const m = await this.repo.memberContext(requesterId);
+      if (!m) return null;
+      const vars = { request_no: '', hospital: m.hospital_name ?? '', requester_name: m.full_name, color: '-', reason: '-', bed_date: '-', staff_name: 'เจ้าหน้าที่', timeout_hours: '' };
+      return { target: { id: m.id, line_user_id: m.line_user_id }, vars, hasBedDate: false };
+    });
+  }
+
+  /** ขั้นตอนร่วมของทุกชนิด: ตรวจเปิด/ปิด → ตรวจปลายทาง/การเชื่อมต่อ/โควต้า → เติมข้อความ → ส่ง → จดผล */
+  private async guarded(type: NotifyType, requestId: number | null, build: () => Promise<{ target: { id: number | null; line_user_id: string | null } | undefined; vars: Record<string, string>; hasBedDate: boolean } | null>): Promise<void> {
     try {
       const tpl = (await this.repo.template(type)) ?? undefined;
       const def = TEMPLATE_DEFS.find((d) => d.type === type)!;
       if (!(tpl ? !!tpl.is_enabled : def.enabled)) return; // ปิดชนิดนี้ไว้ — ไม่ส่งและไม่จด
 
-      const ctx = await this.repo.requestContext(requestId);
-      if (!ctx) return;
-      const target = toRequesterId ? await this.repo.requesterLine(toRequesterId) : { id: ctx.requester_id, line_user_id: ctx.line_user_id };
+      const built = await build();
+      if (!built) return;
+      const { target, vars, hasBedDate } = built;
       const log = (status: 'SENT' | 'FAILED' | 'SKIPPED', error: string | null) => this.repo.addLog({ request_id: requestId, requester_id: target?.id ?? null, type, status, error_message: error });
 
       if (!target || !target.line_user_id) return void (await log('SKIPPED', 'ผู้ขอไม่มีบัญชี LINE (เจ้าหน้าที่บันทึกแทน)'));
@@ -88,22 +118,12 @@ export class NotificationService {
       if (!token) return void (await log('SKIPPED', 'ยังไม่ได้ตั้ง Channel Access Token'));
       if (quota > 0 && ((await this.repo.countsSince(monthStartBangkok())).SENT ?? 0) >= quota) return void (await log('SKIPPED', `โควต้าเดือนนี้เต็ม (${quota} ข้อความ)`));
 
-      const timeout = await getSetting<number>('confirm_timeout_hours');
-      const vars = {
-        request_no: ctx.request_no ?? `#${ctx.id}`,
-        hospital: ctx.hospital_name ?? '',
-        requester_name: ctx.requester_name,
-        color: ctx.color_name ?? '-',
-        reason: ctx.reason_name ?? '-',
-        bed_date: formatThaiDate(ctx.bed_date) || '-',
-        staff_name: extra.staff_name ?? 'เจ้าหน้าที่',
-        timeout_hours: String(timeout),
-      };
+      vars.timeout_hours = String(await getSetting<number>('confirm_timeout_hours'));
       const title = tpl?.title ?? def.title;
       const rawBody = tpl?.body ?? def.body;
       let text = fill(rawBody, vars);
       // ข้อความที่แอดมินเคยแก้ไว้ก่อนมีเรื่องวันที่ อาจไม่มี {bed_date}/{staff_name} — เติมท้ายข้อความให้ ผู้ขอจะได้ไม่พลาดวันและผู้ยืนยัน
-      if ((type === 'CALLED' || type === 'CONFIRMED') && ctx.bed_date && !rawBody.includes('{bed_date}')) text += `\n${type === 'CALLED' ? 'เตียงว่างรับวันที่' : 'วันที่ส่งตัว'}: ${vars.bed_date}`;
+      if ((type === 'CALLED' || type === 'CONFIRMED') && hasBedDate && !rawBody.includes('{bed_date}')) text += `\n${type === 'CALLED' ? 'เตียงว่างรับวันที่' : 'วันที่ส่งตัว'}: ${vars.bed_date}`;
       if (type === 'CONFIRMED' && !rawBody.includes('{staff_name}')) text += `\nยืนยันโดยเจ้าหน้าที่ ${vars.staff_name}`;
       const r = await lineClient.push(target.line_user_id, [await this.flex(title, text, def.button, type, requestId)]);
       if (r.ok) await log('SENT', null);
@@ -119,11 +139,11 @@ export class NotificationService {
   }
 
   /** การ์ดแจ้งเตือน: ปุ่มเปิดหน้าผู้ขอ + (เฉพาะเรียกคิว) ปุ่มยืนยัน/ไม่ยืนยันในแชท ถ้าเปิด webhook ไว้ */
-  private async flex(title: string, text: string, button: string | undefined, type: NotifyType, requestId: number) {
+  private async flex(title: string, text: string, button: string | undefined, type: NotifyType, requestId: number | null) {
     const [liff, base, hook, callBtns, secret] = await Promise.all([getSetting<string>('liff_id'), getSetting<string>('public_base_url'), getSetting<boolean>('line_webhook_enabled'), getSetting<boolean>('line_call_buttons'), getSetting<string>('line_channel_secret')]);
     const url = liff ? `https://liff.line.me/${liff}` : base || null;
     const buttons: Btn[] = [];
-    if (type === 'CALLED' && hook && callBtns && secret) {
+    if (type === 'CALLED' && requestId !== null && hook && callBtns && secret) {
       buttons.push(
         { label: 'ยืนยันตามวันที่แจ้ง', data: `a=confirm&r=${requestId}`, displayText: 'ยืนยันตามวันที่แจ้ง' },
         { label: 'ส่งได้ ขอเลื่อนวัน', style: 'secondary', data: `a=defer&r=${requestId}`, displayText: 'ส่งตัวได้ แต่วันที่แจ้งไม่สะดวก' },

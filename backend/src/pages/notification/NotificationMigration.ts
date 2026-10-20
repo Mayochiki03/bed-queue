@@ -38,4 +38,15 @@ export const notificationMigrations: Migration[] = [
       await db.schema.dropTableIfExists('notification_template');
     },
   },
+  {
+    // ข้อความ "อนุมัติสมาชิก" (v0.9.1) — ตารางสร้างไปแล้วจึงเพิ่มแถวใหม่ที่นี่ (saveTemplate เป็น update ต้องมีแถวก่อน)
+    name: '20261019_21_notification_member_approved',
+    async up(db) {
+      const d = TEMPLATE_DEFS.find((x) => x.type === 'MEMBER_APPROVED')!;
+      if (!(await db('notification_template').where({ type: d.type }).first())) await db('notification_template').insert({ type: d.type, title: d.title, body: d.body, is_enabled: d.enabled, updated_at: nowIso() });
+    },
+    async down(db) {
+      await db('notification_template').where({ type: 'MEMBER_APPROVED' }).delete();
+    },
+  },
 ];

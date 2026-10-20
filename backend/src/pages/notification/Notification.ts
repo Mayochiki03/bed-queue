@@ -4,7 +4,7 @@
  * ออกแบบตามระบบจองคิวนวด: แต่ละชนิดเปิด/ปิดได้ แก้หัวข้อ-ข้อความได้ (เก็บในตาราง notification_template)
  * ข้อความตั้งต้นไม่ใส่ชื่อผู้ป่วยโดยตั้งใจ — ข้อความผ่านเซิร์ฟเวอร์ LINE (นอกหน่วยงาน) ใช้เลขที่คำขอแทน (PDPA)
  */
-export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED';
+export type NotifyType = 'SUBMITTED' | 'CALLED' | 'CONFIRMED' | 'CANCELLED' | 'REQUEUED' | 'REOPENED' | 'TRANSFERRED' | 'MEMBER_APPROVED';
 
 export type TemplateDef = {
   type: NotifyType;
@@ -65,6 +65,15 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
     body: 'คำขอเลขที่ {request_no} ของ {hospital} ถูกโอนมาให้คุณดูแล\nการติดต่อจากเจ้าหน้าที่จะมาที่คุณแทนผู้ขอเดิม',
     enabled: true,
     button: 'เปิดดูคำขอ',
+  },
+  {
+    type: 'MEMBER_APPROVED',
+    name: 'อนุมัติสมาชิก (ลงทะเบียนผ่าน LINE)',
+    when: 'ส่งหาผู้ลงทะเบียนทันทีที่เจ้าหน้าที่กด "อนุมัติ" ในหน้า สมาชิก รพ. (ไม่ส่งซ้ำถ้าอนุมัติอยู่แล้ว)',
+    title: 'อนุมัติแล้ว ใช้งานได้เลย',
+    body: 'คุณได้รับอนุมัติให้ใช้ระบบขอเตียงในนาม {hospital} แล้ว\nเปิดหน้าจอเพื่อส่งคำขอและติดตามสถานะได้ทันที',
+    enabled: true,
+    button: 'เปิดระบบขอเตียง',
   },
   {
     type: 'SUBMITTED',

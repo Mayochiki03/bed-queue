@@ -13,6 +13,7 @@ import { useId, type ReactNode } from 'react';
 import { Controller, useFormContext, type RegisterOptions } from 'react-hook-form';
 import { cn } from '../lib/cn';
 import { MSG } from '../lib/messages';
+import { DatePicker } from './DatePicker';
 import { Select } from './Select';
 
 type Option = { value: string; label: string };
@@ -103,6 +104,53 @@ export function SelectField(props: BaseProps & { options: Option[]; placeholder?
         render={({ field }) => (
           <Select id={name} disabled={disabled} invalid={!!formState.errors[name]} value={String(field.value ?? '')} onChange={field.onChange} placeholder={placeholder} options={[{ value: '', label: placeholder }, ...options]} />
         )}
+      />
+    </FieldShell>
+  );
+}
+
+/**
+ * ช่องวันเวลา (แทน datetime-local): ปฏิทินไทย + เลือกชั่วโมง/นาที — ค่าในฟอร์มเป็น 'YYYY-MM-DDTHH:mm' หรือ '' (ว่าง)
+ *   <DateTimeField name="submitted_at" label="วันเวลาที่ส่งคำขอ" max="2026-10-19T12:30" />
+ */
+const two = (n: number) => String(n).padStart(2, '0');
+const HOURS = Array.from({ length: 24 }, (_, i) => ({ value: two(i), label: two(i) }));
+const MINUTES = Array.from({ length: 60 }, (_, i) => ({ value: two(i), label: two(i) }));
+export function DateTimeField(props: BaseProps & { maxDate?: string }) {
+  const { control, formState } = useFormContext();
+  const { name, required, rules, disabled, maxDate } = props;
+  return (
+    <FieldShell {...props}>
+      <Controller
+        name={name}
+        control={control}
+        rules={{ required: required ? MSG.required : false, ...rules } as never}
+        render={({ field }) => {
+          const v = String(field.value ?? '');
+          const date = v.slice(0, 10);
+          const hh = v.slice(11, 13) || '08';
+          const mm = v.slice(14, 16) || '00';
+          const set = (d: string, h: string, m: string) => field.onChange(d ? `${d}T${h}:${m}` : '');
+          // เลือกวันครั้งแรก: ถ้าเป็นวันนี้ ใช้เวลาปัจจุบัน (กันเวลาเริ่มต้นกลายเป็นอนาคต) ไม่งั้น 08:00
+          const pickDate = (d: string) => {
+            if (v || !d) return set(d, hh, mm);
+            const now = new Date();
+            const today = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+            return d === today ? set(d, two(now.getHours()), two(now.getMinutes())) : set(d, '08', '00');
+          };
+          return (
+            <div className="flex flex-wrap items-center gap-2" aria-invalid={!!formState.errors[name]}>
+              <DatePicker id={name} className="w-auto min-w-[11rem] flex-1" placeholder="เลือกวันที่" max={maxDate} disabled={disabled} value={date} onChange={pickDate} />
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                เวลา
+                <Select aria-label="ชั่วโมง" className="w-auto min-w-[4.5rem]" disabled={disabled || !date} value={hh} options={HOURS} onChange={(h) => set(date, h, mm)} />
+                :
+                <Select aria-label="นาที" className="w-auto min-w-[4.5rem]" disabled={disabled || !date} value={mm} options={MINUTES} onChange={(m) => set(date, hh, m)} />
+                น.
+              </span>
+            </div>
+          );
+        }}
       />
     </FieldShell>
   );

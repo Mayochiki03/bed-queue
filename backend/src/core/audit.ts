@@ -10,6 +10,8 @@ import type { NextFunction, Request, Response } from 'express';
 import { db, nowIso } from './db';
 
 const SENSITIVE = /password|secret|token/i;
+/** ฟิลด์ที่เป็นเนื้อไฟล์ (เช่น นำเข้า Excel ส่งมาเป็น base64 ยาวหลายแสนตัวอักษร) — จดแค่ขนาด ไม่เก็บเนื้อไฟล์ลง log */
+const FILE_BODY = /base64/i;
 const SKIPPED = /\/search$/;
 /** หน้า audit 'minimal' (มีข้อมูลผู้ป่วย): เก็บเฉพาะฟิลด์ที่ไม่ใช่ข้อมูลส่วนบุคคล — รู้ว่าทำอะไรกับเคสไหน/ส่งออกอะไร โดยไม่เก็บชื่อ-เบอร์ */
 const SAFE_KEYS = ['id', 'ids', 'action', 'via', 'hospital_id', 'requester_id', 'color_code', 'substance_code', 'reason_code', 'status', 'statuses', 'days', 'sections', 'widget_ids', 'scope', 'date_from', 'date_to'];
@@ -22,7 +24,7 @@ function safeSubset(body: unknown): unknown {
 function mask(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(mask);
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SENSITIVE.test(k) ? '***' : mask(v)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, SENSITIVE.test(k) ? '***' : FILE_BODY.test(k) && typeof v === 'string' ? `[ไฟล์ ${v.length.toLocaleString('en-US')} ตัวอักษร ไม่เก็บใน log]` : mask(v)]));
   }
   return value;
 }

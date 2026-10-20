@@ -7,6 +7,9 @@ import type { MemberSearchDto } from './MemberDto';
 import type { MemberRepository } from './MemberRepository';
 
 export class MemberService {
+  /** ต่อกับการแจ้งเตือน LINE (ผูกไว้ที่ pages/notification/index.ts) */
+  readonly hooks: { approved?: (requesterId: number) => Promise<void> } = {};
+
   constructor(private repo: MemberRepository) {}
 
   async search({ q, status, pageNo, pageSize }: MemberSearchDto) {
@@ -25,8 +28,9 @@ export class MemberService {
   }
 
   async approve(id: number, userId: number) {
-    await this.mustFind(id);
+    const m = await this.mustFind(id);
     await this.repo.decide(id, 'APPROVED', userId, null);
+    if (m.approval_status !== 'APPROVED') await this.hooks.approved?.(id); // กดอนุมัติซ้ำไม่ส่งข้อความซ้ำ
     return { id };
   }
 

@@ -892,13 +892,13 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
   let rid = 0;
   const logs = async (type?: string) => (await call('POST', '/notification/logs', { type: type ?? '' })).data.resultList as any[];
 
-  it('ตั้งต้น: 7 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
+  it('ตั้งต้น: 8 ชนิด เปิดเฉพาะที่จำเป็น · STAFF เข้าหน้านี้ไม่ได้', async () => {
     staff = ((await call('POST', '/auth/login', { username: 'wstaff', password: 'password123' })).headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     assert.equal((await call('POST', '/notification/templates', {}, staff)).http, 403);
     const t = (await call('POST', '/notification/templates', {})).data;
-    assert.equal(t.templates.length, 7);
+    assert.equal(t.templates.length, 8);
     const on = Object.fromEntries(t.templates.map((x: any) => [x.type, x.is_enabled]));
-    assert.deepEqual(on, { CALLED: true, CONFIRMED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, SUBMITTED: false, REOPENED: false });
+    assert.deepEqual(on, { CALLED: true, CONFIRMED: true, CANCELLED: true, REQUEUED: true, TRANSFERRED: true, MEMBER_APPROVED: true, SUBMITTED: false, REOPENED: false });
     // ข้อความตั้งต้นไม่มีชื่อผู้ป่วย (PDPA)
     assert.ok(t.templates.every((x: any) => !/patient_name|ชื่อผู้ป่วย/.test(x.body)));
   });
@@ -1600,7 +1600,31 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
     const list = (await call('POST', '/member/search', { status: 'PENDING' })).data.resultList as any[];
     assert.equal(list.length, 1);
     assert.equal(list[0].hospital_code, '11206');
-    assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
+    // อนุมัติแล้วระบบแจ้งผู้ลงทะเบียนทาง LINE (จำลองเซิร์ฟเวอร์ LINE) · กดอนุมัติซ้ำไม่แจ้งซ้ำ
+    const prevFetch = globalThis.fetch;
+    const pushes: { to: string; messages: unknown[] }[] = [];
+    globalThis.fetch = (async (url: any, init: any) => {
+      if (String(url) !== 'https://api.line.me/v2/bot/message/push') return prevFetch(url, init);
+      pushes.push(JSON.parse(init.body));
+      return { ok: true, status: 200, json: async () => ({}) } as Response;
+    }) as typeof fetch;
+    await save({ line_channel_token: 'tok-M' });
+    try {
+      assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
+      assert.equal(pushes.length, 1);
+      assert.equal(pushes[0]!.to, 'U-liff-A');
+      const text = JSON.stringify(pushes[0]!.messages[0]);
+      assert.ok(text.includes('อนุมัติแล้ว') && text.includes('รพ.สงขลา'));
+      const approvedLogs = await db('notification_log').where({ type: 'MEMBER_APPROVED', requester_id: list[0].id });
+      assert.equal(approvedLogs.length, 1);
+      assert.equal(approvedLogs[0].status, 'SENT');
+      assert.equal(approvedLogs[0].request_id, null);
+      assert.equal((await call('POST', '/member/approve', { id: list[0].id })).http, 200);
+      assert.equal(pushes.length, 1, 'อนุมัติซ้ำไม่ส่งซ้ำ');
+    } finally {
+      globalThis.fetch = prevFetch;
+      await save({ line_channel_token: '' });
+    }
     assert.equal((await call('POST', '/member/pending-count', {})).data.count, 0);
     const prof = (await post('/profile', {}, 'tok-A')).data;
     assert.equal(prof.approval_status, 'APPROVED');
@@ -1670,6 +1694,16 @@ describe('โรงพยาบาล: เขตสุขภาพ + นำเ�
     assert.equal((await call('POST', '/hospital/add', { code: '20003', name: 'x', health_region: 'abc' })).http, 400);
     assert.equal((await call('POST', '/hospital/update', { id: add.data.id, code: '20001', name: 'รพ.ทดสอบเขต', health_region: '', is_active: 'Y' })).http, 200);
     assert.equal((await call('POST', '/hospital/get', { id: add.data.id })).data.health_region, null);
+  });
+
+  it('audit log ของการนำเข้า Excel ไม่เก็บเนื้อไฟล์ base64', async () => {
+    const b64 = await xlsxBase64([HEAD, ['30001', 'รพ.ทดสอบ audit', 5, 'ใช้งาน']]);
+    assert.equal((await prev(b64)).http, 200);
+    const row = await db('audit_logs').where({ page: 'hospital' }).orderBy('id', 'desc').first();
+    const detail = String(row.detail ?? '');
+    assert.ok(detail.includes('ไม่เก็บ'), detail.slice(0, 200));
+    assert.ok(!detail.includes(b64.slice(0, 60)), 'ต้องไม่มีเนื้อไฟล์');
+    assert.ok(detail.length < 600);
   });
 
   it('ดาวน์โหลดแม่แบบ (เปล่า / พร้อมรายชื่อปัจจุบัน) · STAFF ใช้ไม่ได้', async () => {

@@ -33,6 +33,11 @@ export class NotificationRepository {
     >;
   }
 
+  /** ผู้ลงทะเบียน + ชื่อ รพ. (ใช้กับข้อความอนุมัติสมาชิก) */
+  memberContext(requesterId: number): Promise<{ id: number; full_name: string; line_user_id: string | null; hospital_name: string | null } | undefined> {
+    return db('requester as q').leftJoin('hospital as h', 'h.id', 'q.hospital_id').where('q.id', requesterId).first('q.id', 'q.full_name', 'q.line_user_id', 'h.name as hospital_name');
+  }
+
   requesterLine(requesterId: number): Promise<{ id: number; line_user_id: string | null } | undefined> {
     return db('requester').where({ id: requesterId }).first('id', 'line_user_id');
   }

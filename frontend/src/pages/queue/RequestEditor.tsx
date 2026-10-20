@@ -9,7 +9,7 @@ import { Navigate, useNavigate } from 'react-router';
 import { hospitalApi, type HospitalOption } from '../../api/hospitalApi';
 import { requestApi, type RequesterOption, type RequestInput } from '../../api/requestApi';
 import { EditorPage } from '../../components/EditorPage';
-import { SelectField, TextAreaField, TextField } from '../../components/Fields';
+import { DateTimeField, SelectField, TextAreaField, TextField } from '../../components/Fields';
 import { usePopup } from '../../components/Popup';
 import { Spinner } from '../../components/Spinner';
 import { useEditId } from '../../hooks/useEditId';
@@ -139,7 +139,7 @@ export default function RequestEditor({ mode }: { mode: 'add' | 'edit' }) {
             <TextField name="requester_phone" label="เบอร์โทรผู้ขอ" maxLength={50} placeholder="เช่น 0812345678 หรือ 0243535646 ต่อ 1275" readOnly={fromRequester} />
             <TextField name="requester_phone2" label="เบอร์สำรอง" maxLength={50} readOnly={fromRequester} />
             {mode === 'add' && (
-              <TextField name="submitted_at" label="วันเวลาที่ส่งคำขอ" type="datetime-local" hint="เว้นว่าง = ตอนนี้ · บันทึกย้อนหลังได้ ลำดับคิวนับตามเวลานี้" rules={{ validate: (v: string) => !v || v <= nowLocal() || 'ต้องไม่เป็นเวลาในอนาคต' }} />
+              <DateTimeField name="submitted_at" label="วันเวลาที่ส่งคำขอ" maxDate={nowLocal().slice(0, 10)} hint="เว้นว่าง = ตอนนี้ · บันทึกย้อนหลังได้ ลำดับคิวนับตามเวลานี้" rules={{ validate: (v: string) => !v || v <= nowLocal() || 'ต้องไม่เป็นเวลาในอนาคต' }} />
             )}
           </div>
         </section>
