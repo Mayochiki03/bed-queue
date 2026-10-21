@@ -4,6 +4,7 @@
  * size: sm | md | lg | xl  ·  จอมือถือกว้างเกือบเต็ม  ·  Esc/กดพื้นหลังเพื่อปิด
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { keepFloating } from '../lib/floating';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { cn } from '../lib/cn';
@@ -17,7 +18,7 @@ export function Modal({ open, onClose, title, description, size = 'md', footer, 
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[92vh] w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-card shadow-xl focus:outline-none', SIZE[size])}>
+        <Dialog.Content onInteractOutside={keepFloating} className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[92vh] w-[94vw] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-card shadow-xl focus:outline-none', SIZE[size])}>
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div className="min-w-0">
               <Dialog.Title className="text-lg font-semibold text-foreground">{title}</Dialog.Title>

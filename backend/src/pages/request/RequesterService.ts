@@ -6,7 +6,8 @@
  * (ผู้ขอที่ถูกระงับ is_blocked ทำอะไรไม่ได้)
  *
  * ลงทะเบียน: ต้องกรอกรหัส+ชื่อ รพ. ตรงกับรายชื่อกลาง (HospitalService.verify) แล้วสถานะเป็น PENDING รอเจ้าหน้าที่อนุมัติ
- * ก่อนอนุมัติ: ดูโปรไฟล์ตัวเองได้ แต่ส่ง/ดู/ยกเลิก/ตอบคำขอไม่ได้ · เปลี่ยน รพ. ภายหลัง = กลับไปรออนุมัติใหม่
+ * ก่อนอนุมัติ: ดูโปรไฟล์ตัวเองได้ แต่ส่ง/ดู/ยกเลิก/ตอบคำขอไม่ได้ · แก้ได้ทุกช่อง (เปลี่ยน รพ. = รออนุมัติใหม่)
+ * หลังอนุมัติ: ชื่อ-สกุล/รพ. ล็อก (เจ้าหน้าที่แก้ให้ที่หน้าสมาชิก) · เบอร์ใหม่ต้องส่งเป็นคำขอ รอเจ้าหน้าที่อนุมัติ
  * เจ้าหน้าที่ รพ. เดียวกัน (อนุมัติแล้ว) เห็นและจัดการคำขอของ รพ. ร่วมกันทั้งหมด
  */
 import { badRequest, forbidden, notFound } from '../../core/http';
@@ -15,7 +16,7 @@ import { hospitalService } from '../hospital';
 import type { BedRequest, Requester } from './Request';
 import type { RequesterProfileDto, SubmitDto } from './RequestDto';
 import type { RequestRepository } from './RequestRepository';
-import type { RequestService } from './RequestService';
+import { RequestService } from './RequestService';
 
 export type RequesterView = {
   id: number;
@@ -29,6 +30,11 @@ export type RequesterView = {
   /** PENDING รออนุมัติ · APPROVED ใช้งานได้ · REJECTED ไม่อนุมัติ */
   approval_status: 'PENDING' | 'APPROVED' | 'REJECTED';
   decided_note: string | null;
+  /** true = อนุมัติแล้ว → ชื่อ-สกุลและ รพ. แก้เองไม่ได้ (ต้องติดต่อเจ้าหน้าที่) */
+  locked: boolean;
+  /** เบอร์ใหม่ที่ขอเปลี่ยน รออนุมัติ */
+  pending_phone: string | null;
+  pending_phone2: string | null;
 };
 
 export type MyRequestView = BedRequest & {
@@ -45,7 +51,7 @@ export class RequesterService {
 
   private async view(r: Requester): Promise<RequesterView> {
     const h = await this.repo.hospital(r.hospital_id);
-    return { id: r.id, full_name: r.full_name, phone: r.phone, phone2: r.phone2, hospital_id: r.hospital_id, hospital_code: h?.code ?? '', hospital_name: h?.name ?? '', pdpa_accepted_at: r.pdpa_accepted_at, approval_status: r.approval_status, decided_note: r.decided_note };
+    return { id: r.id, full_name: r.full_name, phone: r.phone, phone2: r.phone2, hospital_id: r.hospital_id, hospital_code: h?.code ?? '', hospital_name: h?.name ?? '', pdpa_accepted_at: r.pdpa_accepted_at, approval_status: r.approval_status, decided_note: r.decided_note, locked: r.approval_status === 'APPROVED', pending_phone: r.phone_change_at ? r.pending_phone : null, pending_phone2: r.phone_change_at ? r.pending_phone2 : null };
   }
 
   /** โปรไฟล์ของ line_user_id นี้ (null = ยังไม่ลงทะเบียน) */
@@ -67,6 +73,26 @@ export class RequesterService {
   async saveProfile(lineUserId: string, displayName: string | null, dto: RequesterProfileDto, opts: { mock?: boolean } = {}): Promise<RequesterView> {
     const cur = await this.repo.requesterByLine(lineUserId);
     if (cur) this.assertNotBlocked(cur);
+
+    // อนุมัติแล้ว: ชื่อ-สกุลและ รพ. ล็อก (ตรวจที่นี่ ไม่ใช่แค่ซ่อนในหน้าจอ) · เบอร์ใหม่ = ส่งเป็นคำขอให้เจ้าหน้าที่อนุมัติ
+    // ตรวจก่อนเรียก hospitalService.verify เพื่อไม่ให้ความพยายามย้าย รพ. ไปเปลืองการค้นฐานข้อมูล
+    if (cur && cur.approval_status === 'APPROVED' && !opts.mock) {
+      const h = await this.repo.hospital(cur.hospital_id);
+      const errs: Record<string, string> = {};
+      if (dto.hospital_code !== (h?.code ?? '') || dto.hospital_name.replace(/\s+/g, '') !== (h?.name ?? '').replace(/\s+/g, '')) errs.hospital_code = 'แก้โรงพยาบาลเองไม่ได้ กรุณาติดต่อเจ้าหน้าที่';
+      if (dto.full_name.replace(/\s+/g, '') !== cur.full_name.replace(/\s+/g, '')) errs.full_name = 'แก้ชื่อ-สกุลเองไม่ได้ กรุณาติดต่อเจ้าหน้าที่';
+      if (Object.keys(errs).length) throw badRequest('ข้อมูลชื่อ-สกุลและโรงพยาบาลแก้เองไม่ได้ กรุณาติดต่อเจ้าหน้าที่', errs);
+      // เบอร์สำรองที่ยังว่างอยู่ เติมได้เลย (ไม่มีของเดิมให้เสียหาย) · เบอร์ที่มีค่าอยู่แล้วต้องส่งคำขอเปลี่ยน
+      const fillPhone2 = !cur.phone2 && !!dto.phone2;
+      const same = dto.phone === cur.phone && (fillPhone2 || (dto.phone2 ?? null) === (cur.phone2 ?? null));
+      await this.repo.updateRequester(cur.id, {
+        display_name: displayName,
+        last_seen_at: new Date().toISOString(),
+        ...(fillPhone2 ? { phone2: dto.phone2 } : {}),
+        ...(same ? { pending_phone: null, pending_phone2: null, phone_change_at: null } : { pending_phone: dto.phone, pending_phone2: dto.phone2, phone_change_at: new Date().toISOString() }),
+      });
+      return this.view((await this.repo.requesterById(cur.id))!);
+    }
     if (!cur && !dto.accept_pdpa) throw badRequest('กรุณารับทราบเรื่องข้อมูลส่วนบุคคลก่อนลงทะเบียน', { accept_pdpa: 'ต้องรับทราบก่อน' });
 
     const hospitalId = opts.mock ? await hospitalService.findOrCreate(dto.hospital_code, dto.hospital_name) : await hospitalService.verify(dto.hospital_code, dto.hospital_name);
@@ -76,6 +102,9 @@ export class RequesterService {
       const moved = hospitalId !== cur.hospital_id && !opts.mock;
       await this.repo.updateRequester(cur.id, {
         ...fields,
+        pending_phone: null,
+        pending_phone2: null,
+        phone_change_at: null,
         ...(cur.pdpa_accepted_at || !dto.accept_pdpa ? {} : { pdpa_accepted_at: new Date().toISOString() }),
         ...(moved ? { approval_status: 'PENDING', decided_by: null, decided_at: null, decided_note: null } : {}),
       });
@@ -110,8 +139,9 @@ export class RequesterService {
   }
 
   /** ส่งคำขอ (ผู้ป่วย 1 ราย) — ผู้ขอ 1 คนส่งได้หลายราย */
-  async submit(lineUserId: string, dto: SubmitDto, note: { by_user_id?: number | null; detail?: string } = {}) {
+  async submit(lineUserId: string, input: SubmitDto, note: { by_user_id?: number | null; detail?: string } = {}) {
     const r = await this.mustBe(lineUserId);
+    const dto = RequestService.normalizeOther(input, true);
     for (const [field, type, label] of [
       ['color_code', 'COLOR', 'สี'],
       ['substance_code', 'SUBSTANCE', 'ประเภทสารเสพติด'],
@@ -137,6 +167,8 @@ export class RequesterService {
           color_code: dto.color_code,
           substance_code: dto.substance_code,
           reason_code: dto.reason_code,
+          substance_other: dto.substance_other,
+          reason_other: dto.reason_other,
           note: dto.note,
           status: 'WAITING',
           submitted_at: new Date().toISOString(),

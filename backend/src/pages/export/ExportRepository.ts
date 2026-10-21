@@ -29,6 +29,8 @@ export type RequestExportRow = {
   color_code: string | null;
   substance_code: string | null;
   reason_code: string | null;
+  substance_other: string | null;
+  reason_other: string | null;
   note: string | null;
   hospital_code: string;
   hospital_name: string;

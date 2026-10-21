@@ -621,7 +621,7 @@ describe('คิวคำขอเตียง (ส่งคำขอ → บอ
   const reqs: Record<string, number> = {};
   const as = (path: string, body: Record<string, unknown>) => call('POST', `/dev/as/${path}`, body);
   const submit = (who: number, patient_name: string, color_code: string | null, extra: Record<string, unknown> = {}) =>
-    as('submit', { requester_id: who, request: { patient_name, color_code, substance_code: 'METH', reason_code: 'OTHER', ...extra } });
+    as('submit', { requester_id: who, request: { patient_name, color_code, substance_code: 'METH', reason_code: 'OTHER', reason_other: 'ทดสอบ', ...extra } });
   const board = async () => (await call('POST', '/request/board', {})).data;
   const item = async (id: number) => (await board()).items.find((i: any) => i.id === id);
 
@@ -923,7 +923,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
   it('เรียกคิวผู้ขอจำลอง → จด SKIPPED (ผู้ขอจำลอง) · ปิดชนิดนี้ → ไม่จดอะไรเพิ่ม · เปิดใหม่จดอีก', async () => {
     await db('notification_log').delete(); // เริ่มนับใหม่ (เทสต์ก่อนหน้ามีการเรียกคิวที่จดไว้แล้ว)
     who = (await call('POST', '/dev/mock/create', { full_name: 'ผู้ขอแจ้งเตือน', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0811111111' })).data.id;
-    rid = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย แจ้งเตือน', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    rid = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย แจ้งเตือน', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER', reason_other: 'ทดสอบ' } })).data.id;
     assert.equal((await logs('SUBMITTED')).length, 0); // SUBMITTED ปิดอยู่
     assert.equal((await call('POST', '/request/transition', { id: rid, action: 'CALL', bed_date: BED_DAY }, staff)).http, 200);
     let l = await logs('CALLED');
@@ -948,10 +948,10 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
     await call('POST', '/dev/as/respond', { requester_id: who, id: rid, accept: true });
     assert.equal((await logs('CONFIRMED')).length, 0);
     const before = (await logs('CANCELLED')).length;
-    const r2 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ยกเลิกเอง', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    const r2 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ยกเลิกเอง', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER', reason_other: 'ทดสอบ' } })).data.id;
     await call('POST', '/dev/as/cancel', { requester_id: who, id: r2 });
     assert.equal((await logs('CANCELLED')).length, before, 'ผู้ขอยกเลิกเองไม่ส่ง');
-    const r3 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ถูกยกเลิก', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER' } })).data.id;
+    const r3 = (await call('POST', '/dev/as/submit', { requester_id: who, request: { patient_name: 'ผู้ป่วย ถูกยกเลิก', color_code: 'GREEN', substance_code: 'METH', reason_code: 'OTHER', reason_other: 'ทดสอบ' } })).data.id;
     await call('POST', '/request/transition', { id: r3, action: 'CANCEL' }, staff);
     assert.equal((await logs('CANCELLED')).length, before + 1);
   });
@@ -1576,7 +1576,7 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
   };
   const save = (values: Record<string, unknown>) => call('POST', '/setting/save', { values });
   const profile = { full_name: 'สมชาย ใจดี', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0811112222' };
-  const patient = { patient_name: 'ผู้ป่วย ลับมาก', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER' };
+  const patient = { patient_name: 'ผู้ป่วย ลับมาก', color_code: 'RED', substance_code: 'METH', reason_code: 'OTHER', reason_other: 'ญาติขอใกล้บ้าน' };
 
   before(async () => {
     const { createPublicApp } = await import('../src/publicApp');
@@ -1707,10 +1707,75 @@ describe('API ผู้ขอผ่าน LINE (พอร์ต public)', () => 
     const mockId = (await call('POST', '/dev/mock/create', { full_name: 'จำลอง', hospital_code: '11206', hospital_name: 'รพ.สงขลา', phone: '0800000055' })).data.id as number;
     assert.ok(!((await call('POST', '/member/search', {})).data.resultList as any[]).some((m) => m.id === mockId), 'ผู้ขอจำลองไม่โผล่ในหน้าสมาชิก');
     assert.equal((await call('POST', '/member/approve', { id: mockId })).http, 404);
-    // เปลี่ยน รพ. ภายหลัง → กลับไปรออนุมัติใหม่
-    const move = await post('/save-profile', { profile: { ...profile, hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', accept_pdpa: true } }, 'tok-A');
-    assert.equal(move.data.approval_status, 'PENDING');
-    await call('POST', '/member/approve', { id: move.data.id });
+    // อนุมัติแล้ว: ชื่อ-สกุล/รพ. แก้เองไม่ได้ (บังคับที่เซิร์ฟเวอร์) · เบอร์ใหม่ = ส่งเป็นคำขอ ให้เจ้าหน้าที่อนุมัติ
+    const own = (await post('/profile', {}, 'tok-A')).data;
+    assert.equal(own.locked, true);
+    const tryMove = await post('/save-profile', { profile: { ...profile, hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', accept_pdpa: true } }, 'tok-A');
+    assert.equal(tryMove.http, 400);
+    assert.ok(tryMove.fields?.hospital_code);
+    const tryName = await post('/save-profile', { profile: { ...profile, full_name: 'ชื่อใหม่', hospital_name: 'รพ.สงขลา', accept_pdpa: true } }, 'tok-A');
+    assert.equal(tryName.http, 400);
+    assert.ok(tryName.fields?.full_name);
+    const after = await db('requester').where({ id: own.id }).first();
+    assert.equal(after.approval_status, 'APPROVED');
+    assert.equal(after.full_name, 'สมชาย ใจดี');
+    assert.equal(after.hospital_id, own.hospital_id, 'ย้าย รพ. เองไม่ได้');
+    // เบอร์สำรองที่ยังว่าง เติมได้เลยไม่ต้องรออนุมัติ
+    const fill = await post('/save-profile', { profile: { ...profile, hospital_name: 'รพ.สงขลา', phone2: '0877776666', accept_pdpa: true } }, 'tok-A');
+    assert.equal(fill.data.phone2, '0877776666');
+    assert.equal(fill.data.pending_phone, null);
+    const phoneReq = await post('/save-profile', { profile: { ...profile, hospital_name: 'รพ.สงขลา', phone: '0899998888', accept_pdpa: true } }, 'tok-A');
+    assert.equal(phoneReq.http, 200);
+    assert.equal(phoneReq.data.phone, '0811112222', 'ยังใช้เบอร์เดิมจนกว่าจะอนุมัติ');
+    assert.equal(phoneReq.data.pending_phone, '0899998888');
+    assert.equal((await call('POST', '/member/pending-count', {})).data.count, 1, 'คำขอเปลี่ยนเบอร์นับในป้ายเตือน');
+    const pend = (await call('POST', '/member/search', { status: 'PHONE' })).data.resultList as any[];
+    assert.equal(pend.length, 1);
+    assert.equal(pend[0].pending_phone, '0899998888');
+    // ไม่อนุมัติ → คงเบอร์เดิม · ส่งใหม่แล้วอนุมัติ → ใช้เบอร์ใหม่
+    assert.equal((await call('POST', '/member/reject-phone', { id: own.id })).http, 200);
+    assert.equal((await db('requester').where({ id: own.id }).first()).phone, '0811112222');
+    assert.equal((await call('POST', '/member/reject-phone', { id: own.id })).http, 400, 'ไม่มีคำขอค้าง');
+    await post('/save-profile', { profile: { ...profile, hospital_name: 'รพ.สงขลา', phone: '0899998888', accept_pdpa: true } }, 'tok-A');
+    assert.equal((await call('POST', '/member/approve-phone', { id: own.id })).http, 200);
+    const np = await db('requester').where({ id: own.id }).first();
+    assert.equal(np.phone, '0899998888');
+    assert.equal(np.phone_change_at, null);
+    // ส่งเบอร์เดิมกลับมาตรง ๆ = ไม่มีคำขอค้าง
+    const noChange = await post('/save-profile', { profile: { ...profile, hospital_name: 'รพ.สงขลา', phone: '0899998888', accept_pdpa: true } }, 'tok-A');
+    assert.equal(noChange.data.pending_phone, null);
+    // เจ้าหน้าที่ย้าย รพ./แก้ชื่อให้ (ต้องตรงรายชื่อกลาง) — สถานะอนุมัติคงเดิม
+    assert.equal((await call('POST', '/member/update', { id: own.id, full_name: 'สมชาย ใจดี', hospital_code: '99998', hospital_name: 'รพ.ผิด', phone: '0899998888' })).http, 400);
+    assert.equal((await call('POST', '/member/update', { id: own.id, full_name: 'สมชาย ใจดี', hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', phone: '0899998888' })).http, 200);
+    const moved = await db('requester').where({ id: own.id }).first();
+    assert.equal(moved.approval_status, 'APPROVED');
+    assert.notEqual(moved.hospital_id, own.hospital_id);
+    // ก่อนอนุมัติ (ไม่ถูกล็อก) ยังแก้ได้ทุกช่อง: ไม่อนุมัติแล้วแก้ รพ. ที่พิมพ์ผิดได้
+    assert.equal((await call('POST', '/member/reject', { id: own.id, note: 'x' })).http, 200);
+    assert.equal((await post('/profile', {}, 'tok-A')).data.locked, false);
+    assert.equal((await post('/save-profile', { profile: { ...profile, hospital_code: '11206', hospital_name: 'รพ.สงขลา', accept_pdpa: true } }, 'tok-A')).http, 200);
+    await call('POST', '/member/approve', { id: own.id });
+    await call('POST', '/member/update', { id: own.id, full_name: 'สมชาย ใจดี', hospital_code: '99998', hospital_name: 'รพ.อื่นทดสอบ', phone: '0811112222' });
+  });
+
+  it('เลือก "อื่น ๆ" ต้องพิมพ์รายละเอียด · เลือกอย่างอื่นระบบล้างทิ้ง · แสดงในรายการและส่งออก', async () => {
+    const no = await post('/submit', { request: { patient_name: 'ผู้ป่วยอื่นๆ ก', substance_code: 'OTHER', reason_code: 'OTHER' } }, 'tok-A');
+    assert.equal(no.http, 400);
+    assert.ok(no.fields?.substance_other && no.fields?.reason_other);
+    const ok = await post('/submit', { request: { patient_name: 'ผู้ป่วยอื่นๆ ข', substance_code: 'OTHER', substance_other: 'ยานอนหลับ, กัญชา', reason_code: 'BEYOND_CAPACITY', reason_other: 'ควรถูกล้างทิ้ง' } }, 'tok-A');
+    assert.equal(ok.http, 201);
+    const row = await db('bed_request').where({ id: ok.data.id }).first();
+    assert.equal(row.substance_other, 'ยานอนหลับ, กัญชา');
+    assert.equal(row.reason_other, null, 'เหตุผลไม่ใช่อื่น ๆ → ไม่เก็บรายละเอียด');
+    const tooLong = await post('/submit', { request: { patient_name: 'ผู้ป่วยอื่นๆ ค', substance_code: 'OTHER', substance_other: 'ก'.repeat(201) } }, 'tok-A');
+    assert.equal(tooLong.http, 400);
+    const detail = (await call('POST', '/request/get', { id: ok.data.id })).data;
+    assert.equal(detail.substance_other, 'ยานอนหลับ, กัญชา');
+    // เจ้าหน้าที่แก้เป็นสารอื่น → ล้างรายละเอียดเดิม
+    const upd = await call('POST', '/request/update', { id: ok.data.id, hospital_id: row.hospital_id, requester_name: row.requester_name, patient_name: row.patient_name, substance_code: 'METH' });
+    assert.equal(upd.http, 200);
+    assert.equal((await db('bed_request').where({ id: ok.data.id }).first()).substance_other, null);
+    await post('/cancel', { id: ok.data.id }, 'tok-A');
   });
 
   it('จำผลตรวจ token ไว้ ไม่เรียก LINE ซ้ำทุกคำสั่ง', async () => {

@@ -47,7 +47,7 @@ export default function HistoryPage() {
     },
     { header: 'โรงพยาบาล', cell: (r) => r.hospital_name, className: 'hidden sm:table-cell' },
     { header: 'สี', cell: (r) => (r.color_code ? <ColorChip label={lk.label('COLOR', r.color_code)} color={lk.colorOf(r.color_code)} /> : <span className="text-faint">-</span>), className: 'hidden md:table-cell' },
-    { header: 'สารเสพติด', cell: (r) => lk.label('SUBSTANCE', r.substance_code), className: 'hidden lg:table-cell' },
+    { header: 'สารเสพติด', cell: (r) => (r.substance_other ? `${lk.label('SUBSTANCE', r.substance_code)}: ${r.substance_other}` : lk.label('SUBSTANCE', r.substance_code)), className: 'hidden lg:table-cell' },
     { header: 'ผู้ขอ', cell: (r) => r.requester_name, className: 'hidden lg:table-cell' },
     { header: 'ส่งเมื่อ', cell: (r) => formatDateTime(r.submitted_at), className: 'hidden md:table-cell whitespace-nowrap' },
     { header: 'เรียกคิวเมื่อ', cell: (r) => (r.called_at ? formatDateTime(r.called_at) : <span className="text-faint">-</span>), className: 'hidden xl:table-cell whitespace-nowrap' },

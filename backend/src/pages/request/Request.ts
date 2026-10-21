@@ -54,6 +54,9 @@ export type BedRequest = {
   color_code: string | null;
   substance_code: string | null;
   reason_code: string | null;
+  /** รายละเอียดเมื่อเลือก "อื่น ๆ" */
+  substance_other: string | null;
+  reason_other: string | null;
   note: string | null;
   status: Status;
   submitted_at: string;
@@ -78,6 +81,10 @@ export type Requester = {
   full_name: string;
   phone: string;
   phone2: string | null;
+  /** เบอร์ใหม่ที่ผู้ขอขอเปลี่ยน รอเจ้าหน้าที่อนุมัติ (null = ไม่มีคำขอค้าง) */
+  pending_phone: string | null;
+  pending_phone2: string | null;
+  phone_change_at: string | null;
   hospital_id: number;
   pdpa_accepted_at: string | null;
   approval_status: 'PENDING' | 'APPROVED' | 'REJECTED';

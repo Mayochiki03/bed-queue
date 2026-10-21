@@ -97,6 +97,19 @@ export class RequestService {
   }
 
   // ---------- ตรวจข้อมูลก่อนบันทึก ----------
+  /** เลือก "อื่น ๆ" → เก็บรายละเอียดที่พิมพ์ · เลือกอย่างอื่น → ล้างทิ้ง · required = ผู้ขอผ่าน LINE ต้องกรอกเมื่อเลือกอื่น ๆ */
+  static normalizeOther<T extends { substance_code: string | null; reason_code: string | null; substance_other?: string | null; reason_other?: string | null }>(d: T, required: boolean): T & { substance_other: string | null; reason_other: string | null } {
+    const substance_other = d.substance_code === 'OTHER' ? (d.substance_other ?? null) : null;
+    const reason_other = d.reason_code === 'OTHER' ? (d.reason_other ?? null) : null;
+    if (required) {
+      const errs: Record<string, string> = {};
+      if (d.substance_code === 'OTHER' && !substance_other) errs.substance_other = 'กรุณาระบุรายละเอียดสารเสพติด';
+      if (d.reason_code === 'OTHER' && !reason_other) errs.reason_other = 'กรุณาระบุเหตุผล';
+      if (Object.keys(errs).length) throw badRequest('กรุณาระบุรายละเอียดที่เลือก "อื่น ๆ"', errs);
+    }
+    return { ...d, substance_other, reason_other };
+  }
+
   private async assertCodes(d: { color_code: string | null; substance_code: string | null; reason_code: string | null }, current?: Pick<BedRequest, 'color_code' | 'substance_code' | 'reason_code'>) {
     const checks: [keyof typeof d, 'COLOR' | 'SUBSTANCE' | 'REASON', string][] = [
       ['color_code', 'COLOR', 'สี'],
@@ -119,7 +132,8 @@ export class RequestService {
   }
 
   // ---------- เจ้าหน้าที่เพิ่ม/แก้ ----------
-  async create(dto: RequestAddDto, actor: Actor) {
+  async create(input: RequestAddDto, actor: Actor) {
+    const dto = RequestService.normalizeOther(input, false);
     const hospital = await this.repo.hospital(dto.hospital_id);
     if (!hospital) throw badRequest('ไม่พบโรงพยาบาลนี้', { hospital_id: 'เลือกโรงพยาบาล' });
     await this.assertCodes(dto);
@@ -149,6 +163,8 @@ export class RequestService {
           color_code: dto.color_code,
           substance_code: dto.substance_code,
           reason_code: dto.reason_code,
+          substance_other: dto.substance_other,
+          reason_other: dto.reason_other,
           note: dto.note,
           status: 'WAITING',
           submitted_at: submittedAt,
@@ -162,7 +178,8 @@ export class RequestService {
     return { id };
   }
 
-  async update(dto: RequestUpdateDto, actor: Actor) {
+  async update(input: RequestUpdateDto, actor: Actor) {
+    const dto = RequestService.normalizeOther(input, false);
     const cur = await this.repo.findById(dto.id);
     if (!cur) throw notFound('ไม่พบคำขอนี้');
     if (dto.hospital_id !== cur.hospital_id) {
@@ -316,6 +333,8 @@ export const FIELD_LABEL: Record<string, string> = {
   color_code: 'สี',
   substance_code: 'ประเภทสารเสพติด',
   reason_code: 'เหตุผลการส่งต่อ',
+  substance_other: 'รายละเอียดสารเสพติด (อื่น ๆ)',
+  reason_other: 'รายละเอียดเหตุผล (อื่น ๆ)',
   note: 'หมายเหตุ',
   submitted_at: 'เวลาที่ส่งคำขอ',
 };

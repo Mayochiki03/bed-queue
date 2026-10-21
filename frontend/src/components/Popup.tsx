@@ -7,6 +7,7 @@
  *   if (await popup.confirm({ message: 'ต้องการลบ?', danger: true })) { ...ทำต่อ... }
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { keepFloating } from '../lib/floating';
 import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MSG } from '../lib/messages';
@@ -62,7 +63,7 @@ export function PopupProvider({ children }: { children: ReactNode }) {
       <Dialog.Root open={!!state} onOpenChange={(open) => !open && close(false)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card p-6 text-center shadow-xl">
+          <Dialog.Content onInteractOutside={keepFloating} className="fixed left-1/2 top-1/2 z-50 w-[92vw] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card p-6 text-center shadow-xl">
             {state && (
               <>
                 <div className="mb-3 flex justify-center">{ICON[state.kind]}</div>

@@ -1,6 +1,6 @@
 {
   "name": "bed-queue",
-  "version": "0.10.2",
+  "version": "0.11.1",
   "private": true,
   "type": "module",
   "description": "ระบบรับคำขอเตียงผู้ป่วยจากโรงพยาบาลอื่น + จัดคิว + แจ้งเตือน LINE + สถิติ (สร้างบนตัวกลาง app-core-kit)",

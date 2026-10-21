@@ -27,7 +27,7 @@ export function RequestCard({ item: r, rank, showColor, isNext, onOpen, onAction
   const other = rank === 'all' ? r.position_color : r.position_all;
   const called = r.status === 'CALLED';
   const needDate = r.status === 'NEED_DATE';
-  const meta = [r.patient_gender ? GENDER_LABEL[r.patient_gender] : '', r.patient_age !== null ? `${r.patient_age} ปี` : '', r.substance_code ? lk.label('SUBSTANCE', r.substance_code) : ''].filter(Boolean).join(' · ');
+  const meta = [r.patient_gender ? GENDER_LABEL[r.patient_gender] : '', r.patient_age !== null ? `${r.patient_age} ปี` : '', r.substance_code ? `${lk.label('SUBSTANCE', r.substance_code)}${r.substance_other ? `: ${r.substance_other}` : ''}` : ''].filter(Boolean).join(' · ');
 
   return (
     <article

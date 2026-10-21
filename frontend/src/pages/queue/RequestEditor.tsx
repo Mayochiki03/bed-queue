@@ -29,6 +29,8 @@ const EMPTY: RequestInput = {
   color_code: '',
   substance_code: '',
   reason_code: '',
+  substance_other: '',
+  reason_other: '',
   note: '',
   submitted_at: '',
 };
@@ -56,6 +58,8 @@ export default function RequestEditor({ mode }: { mode: 'add' | 'edit' }) {
   const [requesters, setRequesters] = useState<RequesterOption[]>([]);
   const hospitalId = form.watch('hospital_id');
   const requesterId = form.watch('requester_id');
+  const substance = form.watch('substance_code');
+  const reason = form.watch('reason_code');
 
   useEffect(() => {
     void hospitalApi.options().then((r) => r.ok && r.data && setHospitals(r.data));
@@ -80,6 +84,8 @@ export default function RequestEditor({ mode }: { mode: 'add' | 'edit' }) {
           color_code: d.color_code ?? '',
           substance_code: d.substance_code ?? '',
           reason_code: d.reason_code ?? '',
+          substance_other: d.substance_other ?? '',
+          reason_other: d.reason_other ?? '',
           note: d.note ?? '',
         });
         setLoading(false);
@@ -156,7 +162,9 @@ export default function RequestEditor({ mode }: { mode: 'add' | 'edit' }) {
             <TextField name="patient_phone" label="เบอร์โทรผู้ป่วย/ญาติ" maxLength={50} />
             <SelectField name="color_code" label="สี (ระดับผู้ป่วย)" placeholder="ไม่ระบุ" options={lookupOptions(lk.colors)} hint="สีใช้จัดคิวแยกตามเตียงที่ว่าง" />
             <SelectField name="substance_code" label="ประเภทสารเสพติด" placeholder="ไม่ระบุ" options={lookupOptions(lk.substances)} />
+            {substance === 'OTHER' && <TextField name="substance_other" label="ระบุสารเสพติด (อื่น ๆ)" maxLength={200} hint="พิมพ์ได้หลายชนิด คั่นด้วยจุลภาค" />}
             <SelectField name="reason_code" label="เหตุผลการส่งต่อ" placeholder="ไม่ระบุ" options={lookupOptions(lk.reasons)} />
+            {reason === 'OTHER' && <TextField name="reason_other" label="ระบุเหตุผล (อื่น ๆ)" maxLength={200} />}
             <TextAreaField name="note" label="หมายเหตุ" maxLength={1000} className="md:col-span-2" />
           </div>
           <p className="mt-3 text-xs text-muted-foreground">ข้อมูลผู้ป่วยเป็นข้อมูลสุขภาพ — กรอกเท่าที่จำเป็นต่อการประสานงานขอเตียง</p>

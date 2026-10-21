@@ -28,6 +28,8 @@ export type RequestBase = {
   color_code: string | null;
   substance_code: string | null;
   reason_code: string | null;
+  substance_other: string | null;
+  reason_other: string | null;
   note: string | null;
   status: Status;
   submitted_at: string;
@@ -73,6 +75,8 @@ export type RequestInput = {
   color_code: string;
   substance_code: string;
   reason_code: string;
+  substance_other: string;
+  reason_other: string;
   note: string;
   /** datetime-local (เวลาท้องถิ่น) — เว้นว่าง = ตอนนี้ */
   submitted_at: string;
@@ -94,6 +98,8 @@ const toBody = (v: RequestInput) => ({
   color_code: v.color_code,
   substance_code: v.substance_code,
   reason_code: v.reason_code,
+  substance_other: v.substance_other,
+  reason_other: v.reason_other,
   note: v.note,
 });
 

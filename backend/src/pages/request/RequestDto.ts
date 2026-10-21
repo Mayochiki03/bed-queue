@@ -51,6 +51,9 @@ export const patientShape = {
   color_code: optCode,
   substance_code: optCode,
   reason_code: optCode,
+  /** รายละเอียดเมื่อเลือก "อื่น ๆ" (OTHER) — ระบบเก็บเฉพาะตอนเลือก OTHER */
+  substance_other: optText('รายละเอียดสารเสพติด', 200),
+  reason_other: optText('รายละเอียดเหตุผล', 200),
   note: optText('หมายเหตุ', 1000),
 };
 

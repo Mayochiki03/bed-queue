@@ -177,7 +177,7 @@ export function Select({ value, onChange, options, placeholder = '-- เลื�
             role="listbox"
             aria-label={ariaLabel}
             onKeyDown={onKeyDown}
-            style={{ position: 'fixed', left: pos.left, minWidth: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
+            data-floating-popup="" style={{ pointerEvents: 'auto', position: 'fixed', left: pos.left, minWidth: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxHeight }}
             className="z-[100] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-1.5 text-foreground shadow-xl"
           >
             {options.map((o, i) => {

@@ -212,4 +212,30 @@ export const requestMigrations: Migration[] = [
       });
     },
   },
+  {
+    // ผู้ขอเลือก "อื่น ๆ" (สารเสพติด/เหตุผล) แล้วพิมพ์รายละเอียดเพิ่มได้ · เบอร์ใหม่ที่ขอเปลี่ยนรอเจ้าหน้าที่อนุมัติ (เบอร์เดิมใช้ต่อจนกว่าจะอนุมัติ)
+    name: '20261020_42_other_detail_and_pending_phone',
+    async up(db) {
+      await db.schema.alterTable('bed_request', (t) => {
+        t.string('substance_other', 200).nullable();
+        t.string('reason_other', 200).nullable();
+      });
+      await db.schema.alterTable('requester', (t) => {
+        t.string('pending_phone', 50).nullable();
+        t.string('pending_phone2', 50).nullable();
+        t.string('phone_change_at', 30).nullable();
+      });
+    },
+    async down(db) {
+      await db.schema.alterTable('bed_request', (t) => {
+        t.dropColumn('substance_other');
+        t.dropColumn('reason_other');
+      });
+      await db.schema.alterTable('requester', (t) => {
+        t.dropColumn('pending_phone');
+        t.dropColumn('pending_phone2');
+        t.dropColumn('phone_change_at');
+      });
+    },
+  },
 ];

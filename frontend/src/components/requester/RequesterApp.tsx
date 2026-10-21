@@ -16,6 +16,7 @@ import { cn } from '../../lib/cn';
 import { formatDate, formatDateTime } from '../../lib/format';
 import { applyFieldErrors, noEnterSubmit } from '../../lib/forms';
 import { Button } from '../Button';
+import { Modal } from '../Modal';
 import { SelectField, TextAreaField, TextField } from '../Fields';
 import { usePopup } from '../Popup';
 import { StatusChip } from '../queue/parts';
@@ -36,7 +37,7 @@ export type RequesterApi = {
 
 export type HospitalCheck = (code: string) => Promise<ApiResult<{ found: boolean; name: string }>>;
 
-const EMPTY_SUBMIT: SubmitInput = { patient_name: '', patient_gender: '', patient_age: '', patient_province: '', patient_phone: '', color_code: '', substance_code: '', reason_code: '', note: '' };
+const EMPTY_SUBMIT: SubmitInput = { patient_name: '', patient_gender: '', patient_age: '', patient_province: '', patient_phone: '', color_code: '', substance_code: '', substance_other: '', reason_code: '', reason_other: '', note: '' };
 const GENDERS = [
   { value: 'M', label: 'ชาย' },
   { value: 'F', label: 'หญิง' },
@@ -52,33 +53,89 @@ export function RegisterFlow({ onRegister, checkHospital }: { onRegister: (p: Pr
   const [agreed, setAgreed] = useState(false);
   const form = useForm<ProfileInput>({ defaultValues: { full_name: '', hospital_code: '', hospital_name: '', phone: '', phone2: '' } });
   const [saving, setSaving] = useState(false);
+  const [review, setReview] = useState<ProfileInput | null>(null);
+  const [checked, setChecked] = useState(false);
   useEffect(() => {
     void settingApi.ui().then((r) => r.ok && r.data && setNotice(r.data.pdpa_notice));
   }, []);
 
-  const submit = form.handleSubmit(async (v) => {
+  // กรอกครบ → ขึ้นหน้าสรุปให้ตรวจก่อน → ติ๊กยืนยัน → จึงส่งจริง
+  const toReview = form.handleSubmit((v) => {
+    setChecked(false);
+    setReview(v);
+  });
+  async function confirmRegister() {
+    if (!review) return;
     setSaving(true);
-    const res = await onRegister(v).finally(() => setSaving(false));
+    const res = await onRegister(review).finally(() => setSaving(false));
     if (!res.ok) {
+      setReview(null); // กลับไปแก้ที่ฟอร์ม
       applyFieldErrors(form.setError, res);
       popup.warn(res.message);
     }
-  });
+  }
 
   return (
     <div className="p-4">
       {!agreed ? (
         <ConsentCard notice={notice} onAccept={() => setAgreed(true)} />
+      ) : review ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="font-display text-xl font-bold text-foreground">ตรวจสอบข้อมูลก่อนลงทะเบียน</h2>
+            <p className="mt-1 text-sm text-muted-foreground">หลังลงทะเบียน ชื่อ-สกุลและโรงพยาบาลแก้เองไม่ได้</p>
+          </div>
+          <dl className="flex flex-col gap-2.5 rounded-2xl border border-border bg-card p-3.5 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">ชื่อ-สกุล</dt>
+              <dd className="font-medium">{review.full_name}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">โรงพยาบาล</dt>
+              <dd className="font-medium">
+                {review.hospital_name} ({review.hospital_code})
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">เบอร์โทร</dt>
+              <dd className="text-xl font-bold tracking-wide">{review.phone}</dd>
+            </div>
+            {review.phone2 && (
+              <div>
+                <dt className="text-xs text-muted-foreground">เบอร์สำรอง</dt>
+                <dd className="text-lg font-semibold">{review.phone2}</dd>
+              </div>
+            )}
+          </dl>
+          <p role="alert" className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn-ink">
+            ตรวจเบอร์โทรให้ถูกต้อง ถ้ากรอกผิดต้องส่งคำขอเปลี่ยนและรอเจ้าหน้าที่อนุมัติ
+          </p>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1 size-4" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+            ฉันตรวจสอบชื่อ โรงพยาบาล และเบอร์โทรแล้ว ถูกต้องทั้งหมด
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-11" onClick={() => setReview(null)}>
+              กลับไปแก้ไข
+            </Button>
+            <Button className="h-11" disabled={!checked} loading={saving} onClick={() => void confirmRegister()}>
+              ยืนยันลงทะเบียน
+            </Button>
+          </div>
+        </div>
       ) : (
         <FormProvider {...form}>
-          <form onSubmit={submit} onKeyDown={noEnterSubmit} noValidate className="flex flex-col gap-3">
+          <form onSubmit={toReview} onKeyDown={noEnterSubmit} noValidate className="flex flex-col gap-3">
             <div>
               <h2 className="font-display text-xl font-bold text-foreground">ข้อมูลของคุณ</h2>
               <p className="mt-1 text-sm text-muted-foreground">กรอกครั้งเดียว หลังเจ้าหน้าที่ตรวจและอนุมัติแล้วจึงส่งคำขอได้</p>
             </div>
+            <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn-ink">
+              <b>โปรดตรวจเบอร์โทรให้ถูกต้อง</b> ถ้ากรอกผิดต้องส่งคำขอเปลี่ยนและรอเจ้าหน้าที่อนุมัติ
+            </p>
             <ProfileFields check={checkHospital} />
-            <Button type="submit" full loading={saving} className="mt-2 h-11">
-              ลงทะเบียน
+            <Button type="submit" full className="mt-2 h-11">
+              ถัดไป: ตรวจสอบข้อมูล
             </Button>
           </form>
         </FormProvider>
@@ -332,6 +389,36 @@ function QueueHint({ r }: { r: MockRequest }) {
   );
 }
 
+const dayOf = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: '2-digit' }) : '-');
+
+/** คำขอที่ปิดแล้ว: ไทม์ไลน์ 3 ช่อง มีป้ายกำกับ เรียงตามเวลา (ส่งคำขอ → เรียกคิว → ผลลัพธ์) */
+function DoneTimeline({ r }: { r: MockRequest }) {
+  const end =
+    r.status === 'CONFIRMED'
+      ? { label: 'ส่งตัว', value: r.bed_date ? formatDate(r.bed_date) : '-', tone: 'text-success-ink font-bold' }
+      : r.status === 'DECLINED'
+        ? { label: 'ไม่ยืนยัน', value: dayOf(r.resolved_at), tone: 'text-muted-foreground' }
+        : { label: 'ยกเลิก', value: dayOf(r.resolved_at), tone: 'text-muted-foreground' };
+  const steps = [
+    { label: 'ส่งคำขอ', value: dayOf(r.submitted_at), tone: 'text-foreground' },
+    ...(r.called_at ? [{ label: 'เรียกคิว', value: dayOf(r.called_at), tone: 'text-foreground' }] : []),
+    end,
+  ];
+  return (
+    <ol className="mt-2 flex items-start gap-1 rounded-lg bg-muted/60 px-2 py-1.5" aria-label="ลำดับวันที่ของคำขอ">
+      {steps.map((s, i) => (
+        <li key={s.label} className="flex min-w-0 flex-1 items-start gap-1">
+          {i > 0 && <span aria-hidden className="pt-3.5 text-xs text-faint">›</span>}
+          <div className="min-w-0">
+            <div className="text-[11px] leading-tight text-muted-foreground">{s.label}</div>
+            <div className={cn('text-xs leading-snug', s.tone)}>{s.value}</div>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function MineTab({ api, rows, reload, goSubmit }: { api: RequesterApi; rows: MockRequest[] | null; reload: () => Promise<void>; goSubmit: () => void }) {
   const popup = usePopup();
   const lk = useLookups();
@@ -421,12 +508,14 @@ function MineTab({ api, rows, reload, goSubmit }: { api: RequesterApi; rows: Moc
                         {lk.label('COLOR', r.color_code)}
                       </span>
                     )}
-                    <span>ส่งเมื่อ {formatDateTime(r.submitted_at)}</span>
+                    {OPEN_STATUSES.includes(r.status) && <span>ส่งเมื่อ {formatDateTime(r.submitted_at)}</span>}
                     {r.requester_name && <span>โดย {r.requester_name}</span>}
                   </div>
                 </div>
                 <StatusChip status={r.status} />
               </div>
+
+              {!OPEN_STATUSES.includes(r.status) && <DoneTimeline r={r} />}
 
               {r.status === 'WAITING' && <QueueHint r={r} />}
 
@@ -459,13 +548,6 @@ function MineTab({ api, rows, reload, goSubmit }: { api: RequesterApi; rows: Moc
                   <p className="text-sm font-semibold">รับทราบว่าคุณจะส่งตัว แต่วันที่แจ้งไม่สะดวก</p>
                   <p className="mt-0.5 text-xs opacity-90">เจ้าหน้าที่จะโทรกลับที่เบอร์ของคุณเพื่อนัดวันที่ตรงกัน เมื่อตกลงแล้วจะมีข้อความยืนยันวันที่ส่งใน LINE</p>
                 </div>
-              )}
-
-              {r.status === 'CONFIRMED' && r.bed_date && (
-                <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-success-soft px-2.5 py-1.5 text-sm font-semibold text-success-ink">
-                  <CalendarDays className="size-4" aria-hidden="true" />
-                  วันที่ส่งตัว {formatDate(r.bed_date)}
-                </p>
               )}
 
               {OPEN_STATUSES.includes(r.status) && (
@@ -551,7 +633,9 @@ function SubmitTab({ api, onDone }: { api: RequesterApi; onDone: () => void | Pr
           <h3 className="text-sm font-semibold text-primary-ink">ระดับและเหตุผล</h3>
           <ColorPicker />
           <SelectField name="substance_code" label="ประเภทสารเสพติด" placeholder="ไม่ระบุ" options={opts(lk.substances)} />
+          {form.watch('substance_code') === 'OTHER' && <TextField name="substance_other" label="ระบุสารเสพติด" required maxLength={200} hint="ถ้ามีหลายชนิด พิมพ์คั่นด้วยจุลภาค" />}
           <SelectField name="reason_code" label="เหตุผลการส่งต่อ" placeholder="ไม่ระบุ" options={opts(lk.reasons)} />
+          {form.watch('reason_code') === 'OTHER' && <TextField name="reason_other" label="ระบุเหตุผล" required maxLength={200} />}
           <TextAreaField name="note" label="หมายเหตุ" maxLength={1000} />
         </section>
         <p className="text-xs text-muted-foreground">ข้อมูลผู้ป่วยเป็นข้อมูลสุขภาพ ใช้เพื่อประสานงานขอเตียงเท่านั้น</p>
@@ -567,6 +651,7 @@ function ProfileTab({ api, profile, onSaved }: { api: RequesterApi; profile: Moc
   const popup = usePopup();
   const form = useForm<ProfileInput>({ defaultValues: { full_name: profile.full_name, hospital_code: profile.hospital_code, hospital_name: profile.hospital_name, phone: profile.phone, phone2: profile.phone2 ?? '' } });
   const [saving, setSaving] = useState(false);
+  const [changing, setChanging] = useState(false);
   const submit = form.handleSubmit(async (v) => {
     if (!(await popup.confirm({ title: 'บันทึกข้อมูล', message: 'ต้องการบันทึกข้อมูลของคุณใช่หรือไม่?', confirmText: 'บันทึก' }))) return;
     setSaving(true);
@@ -584,10 +669,31 @@ function ProfileTab({ api, profile, onSaved }: { api: RequesterApi; profile: Moc
       <form onSubmit={submit} onKeyDown={noEnterSubmit} noValidate className="flex flex-col gap-3">
         <div>
           <h2 className="font-display text-lg font-bold text-foreground">ข้อมูลของฉัน</h2>
-          <p className="text-xs text-muted-foreground">แก้ไขได้ตลอด · ถ้าเปลี่ยนโรงพยาบาล ต้องรอเจ้าหน้าที่อนุมัติใหม่</p>
+          <p className="text-xs text-muted-foreground">
+            {profile.locked ? 'ชื่อ-สกุลและโรงพยาบาลแก้เองไม่ได้ · ถ้าต้องการย้าย รพ. หรือแก้ชื่อ กรุณาติดต่อเจ้าหน้าที่' : 'แก้ไขได้ · ถ้าเปลี่ยนโรงพยาบาล ต้องรอเจ้าหน้าที่อนุมัติใหม่'}
+          </p>
         </div>
+        {profile.locked && profile.pending_phone && (
+          <p role="status" className="rounded-xl border bg-warn-soft px-3 py-2 text-sm text-warn-ink">
+            ส่งคำขอเปลี่ยนเบอร์เป็น <b>{profile.pending_phone}</b>
+            {profile.pending_phone2 ? ` / ${profile.pending_phone2}` : ''} แล้ว รอเจ้าหน้าที่อนุมัติ — ระหว่างนี้ใช้เบอร์เดิมไปก่อน
+          </p>
+        )}
         <section className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3.5">
-          <ProfileFields check={api.checkHospital} />
+          {profile.locked ? (
+            <>
+              <TextField name="full_name" label="ชื่อ-สกุล" readOnly />
+              <TextField name="hospital_code" label="รหัสโรงพยาบาล" readOnly />
+              <TextField name="hospital_name" label="โรงพยาบาล" readOnly />
+              <TextField name="phone" label="เบอร์โทร" readOnly />
+              <TextField name="phone2" label="เบอร์สำรอง" readOnly={!!profile.phone2} hint={profile.phone2 ? undefined : 'ยังไม่มีเบอร์สำรอง — เติมได้เลย แล้วกด "บันทึก"'} />
+              <Button type="button" variant="outline" className="h-10" onClick={() => setChanging(true)}>
+                แจ้งขอเปลี่ยนเบอร์
+              </Button>
+            </>
+          ) : (
+            <ProfileFields check={api.checkHospital} />
+          )}
         </section>
         {profile.pdpa_accepted_at && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -595,10 +701,69 @@ function ProfileTab({ api, profile, onSaved }: { api: RequesterApi; profile: Moc
             รับทราบนโยบายข้อมูลส่วนบุคคลเมื่อ {formatDateTime(profile.pdpa_accepted_at)}
           </p>
         )}
-        <Button type="submit" full loading={saving} className="h-11">
-          บันทึก
-        </Button>
+        {(!profile.locked || !profile.phone2) && (
+          <Button type="submit" full loading={saving} className="h-11">
+            บันทึก
+          </Button>
+        )}
       </form>
+      {profile.locked && <PhoneChangeModal open={changing} onClose={() => setChanging(false)} api={api} profile={profile} onSaved={onSaved} />}
     </FormProvider>
+  );
+}
+
+/** ขอเปลี่ยนเบอร์ (หลังอนุมัติ): อธิบาย → ใส่เบอร์ใหม่ → ยืนยัน · เจ้าหน้าที่อนุมัติแล้วจึงเปลี่ยนจริง ระหว่างนี้ใช้เบอร์เดิม */
+function PhoneChangeModal({ open, onClose, api, profile, onSaved }: { open: boolean; onClose: () => void; api: RequesterApi; profile: MockProfile; onSaved: () => void | Promise<void> }) {
+  const popup = usePopup();
+  const [phone, setPhone] = useState(profile.pending_phone ?? profile.phone);
+  const [phone2, setPhone2] = useState(profile.pending_phone ? (profile.pending_phone2 ?? '') : (profile.phone2 ?? ''));
+  const [err, setErr] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const unchanged = phone.trim() === profile.phone && phone2.trim() === (profile.phone2 ?? '');
+  async function send() {
+    if (!(await popup.confirm({ title: 'ยืนยันขอเปลี่ยนเบอร์', message: `ส่งคำขอเปลี่ยนเบอร์เป็น\n${phone.trim()}${phone2.trim() ? ` / ${phone2.trim()}` : ''}\n\nตรวจสอบเบอร์ให้ถูกต้องแล้วใช่หรือไม่?`, confirmText: 'ส่งคำขอ' }))) return;
+    setSaving(true);
+    const res = await api.saveProfile({ full_name: profile.full_name, hospital_code: profile.hospital_code, hospital_name: profile.hospital_name, phone: phone.trim(), phone2: phone2.trim() }).finally(() => setSaving(false));
+    if (res.ok) {
+      onClose();
+      popup.success('ส่งคำขอเปลี่ยนเบอร์แล้ว รอเจ้าหน้าที่อนุมัติ');
+      await onSaved();
+    } else {
+      setErr(res.fields ?? {});
+      popup.warn(res.message);
+    }
+  }
+  const field = 'w-full rounded-md border border-border bg-card px-3 py-2 text-base focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="sm"
+      title="แจ้งขอเปลี่ยนเบอร์โทร"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            ยกเลิก
+          </Button>
+          <Button loading={saving} disabled={unchanged} onClick={() => void send()}>
+            ส่งคำขอ
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3 text-sm">
+        <p className="rounded-lg bg-warn-soft px-3 py-2 text-warn-ink">เบอร์ใหม่จะใช้ได้เมื่อเจ้าหน้าที่ตรวจและอนุมัติแล้ว ระหว่างรอ ระบบยังใช้เบอร์เดิม ({profile.phone}) ติดต่อคุณ</p>
+        <label className="flex flex-col gap-1 font-medium">
+          เบอร์โทรใหม่
+          <input className={field} value={phone} maxLength={50} inputMode="tel" aria-invalid={!!err.phone} onChange={(e) => setPhone(e.target.value)} />
+          {err.phone && <span className="text-xs font-normal text-danger">{err.phone}</span>}
+        </label>
+        <label className="flex flex-col gap-1 font-medium">
+          เบอร์สำรองใหม่ (ถ้ามี)
+          <input className={field} value={phone2} maxLength={50} inputMode="tel" aria-invalid={!!err.phone2} onChange={(e) => setPhone2(e.target.value)} />
+          {err.phone2 && <span className="text-xs font-normal text-danger">{err.phone2}</span>}
+        </label>
+      </div>
+    </Modal>
   );
 }

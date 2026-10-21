@@ -160,7 +160,7 @@ export function DatePicker({ value, onChange, min, max, id, 'aria-label': ariaLa
       {open &&
         pos &&
         createPortal(
-          <div ref={pop} role="dialog" aria-label="เลือกวันที่" style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom }} className="z-[100] w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-card p-3 text-foreground shadow-xl">
+          <div ref={pop} role="dialog" aria-label="เลือกวันที่" data-floating-popup="" style={{ position: 'fixed', left: pos.left, top: pos.top, bottom: pos.bottom, pointerEvents: 'auto' }} className="z-[100] w-[19rem] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-card p-3 text-foreground shadow-xl">
             <div className="mb-2 flex items-center justify-between">
               <button type="button" aria-label="เดือนก่อนหน้า" onClick={() => shiftMonth(-1)} className="rounded-lg p-2 hover:bg-muted">
                 <ChevronLeft className="size-4" />

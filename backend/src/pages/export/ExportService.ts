@@ -51,6 +51,9 @@ const hex = (c: string | null | undefined) => (c ? c.replace('#', '').toUpperCas
 
 type Actor = { full_name: string; role: string };
 
+/** "อื่น ๆ" + รายละเอียดที่ผู้ขอพิมพ์ */
+const withOther = (label: string | null, other: string | null): string | null => (other ? `${label ?? 'อื่น ๆ'}: ${other}` : label);
+
 export class ExportService {
   constructor(
     private repo: ExportRepository,
@@ -211,7 +214,7 @@ export class ExportService {
     ];
     const data: Cell[][] = rows.map((r) => [
       r.request_no ?? `#${r.id}`, statusText(r.status), r.patient_name, r.patient_gender ? (GENDER[r.patient_gender] ?? r.patient_gender) : null, r.patient_age, r.patient_province, r.patient_phone,
-      c.lk('COLOR', r.color_code), c.lk('SUBSTANCE', r.substance_code), c.lk('REASON', r.reason_code), r.note,
+      c.lk('COLOR', r.color_code), withOther(c.lk('SUBSTANCE', r.substance_code), r.substance_other), withOther(c.lk('REASON', r.reason_code), r.reason_other), r.note,
       r.hospital_code, r.hospital_name, r.requester_name, r.requester_phone, r.requester_phone2, SOURCE[r.source] ?? r.source,
       bangkokDate(r.submitted_at), bangkokDate(r.called_at), r.call_count || null, r.called_by_name, bangkokDate(r.responded_at), bangkokDate(r.resolved_at), r.resolved_via ? (VIA[r.resolved_via] ?? r.resolved_via) : null, r.resolved_by_name, notes.get(r.id) ?? null,
       daysBetween(r.submitted_at, r.called_at), daysBetween(r.submitted_at, r.resolved_at), edits.get(r.id) ?? null, bangkokDate(r.created_at), bangkokDate(r.updated_at), r.bed_date ? formatThaiDate(r.bed_date) : null,

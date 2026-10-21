@@ -30,7 +30,7 @@ type BaseProps = {
 };
 
 const inputClass =
-  'w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground placeholder:text-faint focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:bg-muted disabled:text-muted-foreground aria-[invalid=true]:border-danger';
+  'w-full rounded-md border border-border bg-card px-3 py-2 text-base text-foreground md:text-sm placeholder:text-faint focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 disabled:bg-muted disabled:text-muted-foreground aria-[invalid=true]:border-danger';
 
 function FieldShell({ name, label, required, hint, className, children }: BaseProps & { children: ReactNode }) {
   const {

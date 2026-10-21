@@ -424,8 +424,8 @@ export function RequestDialog({ id, initialAction, onClose, onChanged }: Props) 
               {[d.patient_gender ? GENDER_LABEL[d.patient_gender] : '', d.patient_age !== null ? `${d.patient_age} ปี` : ''].filter(Boolean).join(' · ')}
             </Info>
             <Info label="จังหวัด">{d.patient_province}</Info>
-            <Info label="ประเภทสารเสพติด">{d.substance_code ? lk.label('SUBSTANCE', d.substance_code) : ''}</Info>
-            <Info label="เหตุผลการส่งต่อ">{d.reason_code ? lk.label('REASON', d.reason_code) : ''}</Info>
+            <Info label="ประเภทสารเสพติด">{d.substance_code ? `${lk.label('SUBSTANCE', d.substance_code)}${d.substance_other ? `: ${d.substance_other}` : ''}` : ''}</Info>
+            <Info label="เหตุผลการส่งต่อ">{d.reason_code ? `${lk.label('REASON', d.reason_code)}${d.reason_other ? `: ${d.reason_other}` : ''}` : ''}</Info>
             {d.status === 'WAITING' && (
               <Info label="ลำดับในคิว">
                 {d.position_all !== null && (

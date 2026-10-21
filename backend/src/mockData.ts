@@ -151,6 +151,8 @@ export async function createMock(opts: { force?: boolean } = {}) {
     const rq = pick(requesters);
     const male = R() < 0.68;
     const color = weighted<string>([['RED', 20], ['ORANGE', 30], ['YELLOW', 30], ['GREEN', 20]]);
+    const substance = weighted<string>([['METH', 35], ['ALCOHOL', 25], ['ICE', 15], ['KRATOM', 15], ['OTHER', 10]]);
+    const reason = weighted<string>([['APPROPRIATE_TREATMENT', 45], ['BEYOND_CAPACITY', 30], ['PATIENT_REQUEST', 15], ['OTHER', 10]]);
     const submitted =
       plan === 'WAITING' ? now - between(0.3, 21) * 24 * H
       : plan.startsWith('CALLED') || plan === 'NEED_DATE' ? now - between(3, 14) * 24 * H
@@ -177,8 +179,10 @@ export async function createMock(opts: { force?: boolean } = {}) {
         patient_province: pick(PROVINCES),
         patient_phone: R() < 0.5 ? `082000${String(2000 + n).slice(-4)}` : null,
         color_code: color,
-        substance_code: weighted<string>([['METH', 35], ['ALCOHOL', 25], ['ICE', 15], ['KRATOM', 15], ['OTHER', 10]]),
-        reason_code: weighted<string>([['APPROPRIATE_TREATMENT', 45], ['BEYOND_CAPACITY', 30], ['PATIENT_REQUEST', 15], ['OTHER', 10]]),
+        substance_code: substance,
+        reason_code: reason,
+        substance_other: substance === 'OTHER' ? pick(['ยานอนหลับ', 'เมทแอมเฟตามีนร่วมกับกัญชา', 'สารระเหย']) : null,
+        reason_other: reason === 'OTHER' ? pick(['ญาติร้องขอใกล้บ้าน', 'ต้องการแยกจากผู้ป่วยรายอื่น']) : null,
         note: pick(NOTES),
         status,
         submitted_at: iso(submitted),

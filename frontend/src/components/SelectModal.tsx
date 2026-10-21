@@ -10,6 +10,7 @@
  * multiple = false (ค่าเริ่มต้น): เลือกได้ 1 รายการ · multiple: เลือกได้หลายรายการ (ข้ามหน้าก็จำไว้)
  */
 import * as Dialog from '@radix-ui/react-dialog';
+import { keepFloating } from '../lib/floating';
 import { useState } from 'react';
 import type { ApiResult, PageResult } from '../api/client';
 import { useTableData } from '../hooks/useTableData';
@@ -36,7 +37,7 @@ export function SelectModal<T>(props: Props<T>) {
     <Dialog.Root open={props.open} onOpenChange={(o) => !o && props.onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[94vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg bg-card p-5 shadow-xl">
+        <Dialog.Content onInteractOutside={keepFloating} className="fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[94vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg bg-card p-5 shadow-xl">
           <Dialog.Title className="mb-3 text-lg font-semibold">{props.title ?? 'ค้นหารายการที่ต้องการ'}</Dialog.Title>
           <Dialog.Description className="sr-only">เลือกรายการจากตารางแล้วกดยืนยัน</Dialog.Description>
           {/* แยกเป็นคอมโพเนนต์ย่อย เพื่อให้ค่าที่ค้นหา/เลือกไว้ถูกล้างทุกครั้งที่เปิดใหม่ */}

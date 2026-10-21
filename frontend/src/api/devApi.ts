@@ -5,10 +5,10 @@ import type { RequestBase } from './requestApi';
 /** คำตอบของผู้ขอหลังถูกเรียกคิว: ยืนยันตามวันที่แจ้ง / ยืนยันจะส่งแต่ขอเลื่อนวัน / ไม่ยืนยัน */
 export type RespondAnswer = 'CONFIRM' | 'DEFER' | 'DECLINE';
 export type MockUser = { id: number; full_name: string; phone: string; phone2: string | null; hospital_code: string; hospital_name: string };
-export type MockProfile = { id: number; full_name: string; phone: string; phone2: string | null; hospital_id: number; hospital_code: string; hospital_name: string; pdpa_accepted_at: string | null; approval_status: 'PENDING' | 'APPROVED' | 'REJECTED'; decided_note: string | null };
+export type MockProfile = { id: number; full_name: string; phone: string; phone2: string | null; hospital_id: number; hospital_code: string; hospital_name: string; pdpa_accepted_at: string | null; approval_status: 'PENDING' | 'APPROVED' | 'REJECTED'; decided_note: string | null; locked?: boolean; pending_phone?: string | null; pending_phone2?: string | null };
 export type MockRequest = RequestBase & { position_all: number | null; position_color: number | null };
 export type ProfileInput = { full_name: string; hospital_code: string; hospital_name: string; phone: string; phone2: string };
-export type SubmitInput = { patient_name: string; patient_gender: string; patient_age: string; patient_province: string; patient_phone: string; color_code: string; substance_code: string; reason_code: string; note: string };
+export type SubmitInput = { patient_name: string; patient_gender: string; patient_age: string; patient_province: string; patient_phone: string; color_code: string; substance_code: string; substance_other: string; reason_code: string; reason_other: string; note: string };
 
 export const devApi = {
   list: () => api.post<MockUser[]>('/dev/mock/list', {}),
