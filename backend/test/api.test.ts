@@ -985,7 +985,7 @@ describe('แจ้งเตือน LINE (เลือกเปิด/ปิ�
       const text = JSON.stringify(sent[0]!.body.messages[0]);
       assert.ok(text.includes('ถึงคิวของคุณแล้ว') && text.includes(`BQ${String(a1).padStart(6, '0')}`));
       assert.ok(!text.includes('ผู้ป่วย ส่งจริง1'), 'ห้ามมีชื่อผู้ป่วยในข้อความ LINE');
-      assert.ok(text.includes('https://liff.line.me/1234-abcd'));
+      assert.ok(text.includes('https://liff.line.me/1234-abcd') || text.includes('a=confirm'), 'การ์ดต้องมีทางตอบ: ปุ่มตอบ 3 ปุ่ม หรือปุ่มเปิดหน้าตอบรับ (ไม่ซ้อนกัน)');
       assert.equal((await logs('CALLED'))[0].status, 'SENT');
 
       respond = () => ({ ok: false, status: 400, json: { message: 'Invalid reply token' } });
@@ -1226,6 +1226,7 @@ describe('LINE webhook', () => {
     await call('POST', '/request/transition', { id: calledId, action: 'CALL', bed_date: BED_DAY }, staffC);
     const push = sent.find((s) => s.body.messages?.[0]?.altText && JSON.stringify(s.body).includes('ถึงคิว'));
     assert.ok(push && !JSON.stringify(push.body).includes('a=confirm'));
+    assert.ok(JSON.stringify(push!.body).includes('เปิดหน้าตอบรับ'), 'ปิดปุ่มตอบ → เหลือปุ่มเปิดหน้าตอบรับ');
     await save({ line_call_buttons: true });
   });
 
@@ -1366,6 +1367,8 @@ describe('วันที่เตียงว่าง + ยืนยันจ�
     for (const a of ['confirm', 'defer', 'decline']) assert.ok(text.includes(`a=${a}&r=${id}`), `ขาดปุ่ม ${a}`);
     const labels: string[] = msg.contents.footer.contents.map((b: any) => b.action.label);
     assert.ok(labels.every((l) => [...l].length <= 20), `ป้ายปุ่มยาวเกิน: ${labels.join(' | ')}`);
+    assert.deepEqual(labels, ['ส่งตามวันที่แจ้ง', 'ยังส่ง ขอเลื่อนวัน', 'ไม่ส่งแล้ว'], 'มี 3 ปุ่มตอบพอดี ไม่มีปุ่มเปิดเว็บซ้ำ');
+    assert.ok(!text.includes('กดตอบ') && text.includes('กรุณาตอบภายใน'), 'ข้อความสั้น ไม่อธิบายปุ่มซ้ำ');
     assert.ok(!text.includes('ผู้ป่วย วันที่ 2'), 'ห้ามมีชื่อผู้ป่วย');
   });
 

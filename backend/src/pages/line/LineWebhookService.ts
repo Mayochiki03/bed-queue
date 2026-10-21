@@ -90,7 +90,7 @@ export class LineWebhookService {
     if (!p) return;
     if (p.a === 'decline') {
       // ถามซ้ำก่อน — กันกดพลาดแล้วเสียคิว
-      return this.reply(ev, [card('ยืนยันว่าไม่ส่งตัว?', `คำขอ ${p.r} จะถูกบันทึกว่า "ไม่ยืนยัน" และเจ้าหน้าที่จะเรียกคิวถัดไป`, [{ label: 'ใช่ ไม่ยืนยัน', data: `a=decline_yes&r=${p.r}`, color: '#B42318' }, { label: 'ยกเลิก (กลับไปเลือกใหม่)', style: 'secondary', data: `a=keep&r=${p.r}` }], '#B42318')]);
+      return this.reply(ev, [card('ยืนยันว่าไม่ส่งตัว?', `คำขอ ${p.r} จะถูกบันทึกว่า "ไม่ยืนยัน" และเจ้าหน้าที่จะเรียกคิวถัดไป`, [{ label: 'ใช่ ไม่ส่งแล้ว', data: `a=decline_yes&r=${p.r}`, color: '#B42318' }, { label: 'ยกเลิก (กลับไปเลือกใหม่)', style: 'secondary', data: `a=keep&r=${p.r}` }], '#B42318')]);
     }
     if (p.a === 'keep') return this.reply(ev, [{ type: 'text', text: 'รับทราบ — ยังไม่เปลี่ยนแปลงอะไร กดปุ่มบนการ์ดเรียกคิวได้เมื่อพร้อม' }]);
     if (p.a !== 'confirm' && p.a !== 'defer' && p.a !== 'decline_yes') return;

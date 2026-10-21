@@ -60,4 +60,16 @@ export const notificationMigrations: Migration[] = [
       await db('notification_template').where({ type: 'MEMBER_REJECTED' }).delete();
     },
   },
+  {
+    // ย่อข้อความการ์ดเรียกคิว (v0.11.2) — เปลี่ยนเฉพาะแถวที่ยังเป็นข้อความตั้งต้นเดิม (ไม่ทับข้อความที่ผู้ดูแลแก้เอง)
+    name: '20261021_23_notification_called_shorter',
+    async up(db) {
+      const d = TEMPLATE_DEFS.find((x) => x.type === 'CALLED')!;
+      const old = 'คำขอเลขที่ {request_no} ของ {hospital} ถึงคิวแล้ว\nเตียงว่างรับวันที่ {bed_date}\nกรุณากดตอบภายใน {timeout_hours} ชั่วโมง: ยืนยันตามวันที่แจ้ง หรือหากจะส่งตัวแต่วันนั้นไม่สะดวก ให้กด "ขอเลื่อนวัน" เจ้าหน้าที่จะโทรนัดวันใหม่';
+      await db('notification_template').where({ type: 'CALLED', body: old }).update({ body: d.body, updated_at: nowIso() });
+    },
+    async down() {
+      /* ไม่ย้อนข้อความ */
+    },
+  },
 ];

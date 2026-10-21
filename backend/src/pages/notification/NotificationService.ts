@@ -156,12 +156,13 @@ export class NotificationService {
     const buttons: Btn[] = [];
     if (type === 'CALLED' && requestId !== null && hook && callBtns && secret) {
       buttons.push(
-        { label: 'ยืนยันตามวันที่แจ้ง', data: `a=confirm&r=${requestId}`, displayText: 'ยืนยันตามวันที่แจ้ง' },
-        { label: 'ส่งได้ ขอเลื่อนวัน', style: 'secondary', data: `a=defer&r=${requestId}`, displayText: 'ส่งตัวได้ แต่วันที่แจ้งไม่สะดวก' },
-        { label: 'ไม่ยืนยัน', style: 'secondary', data: `a=decline&r=${requestId}` },
+        { label: 'ส่งตามวันที่แจ้ง', data: `a=confirm&r=${requestId}`, displayText: 'ส่งตัวตามวันที่แจ้ง' },
+        { label: 'ยังส่ง ขอเลื่อนวัน', style: 'secondary', data: `a=defer&r=${requestId}`, displayText: 'ส่งตัวได้ แต่วันที่แจ้งไม่สะดวก' },
+        { label: 'ไม่ส่งแล้ว', style: 'secondary', data: `a=decline&r=${requestId}`, displayText: 'ไม่ส่งตัวแล้ว' },
       );
     }
-    if (button && url) buttons.push({ label: button, style: buttons.length ? 'secondary' : 'primary', uri: url });
+    // การ์ดเรียกคิวที่มีปุ่มตอบแล้ว ไม่ต้องมีปุ่มเปิดเว็บซ้ำ (กันสับสน) · เหลือเฉพาะตอนปิดปุ่มตอบ
+    if (button && url && !buttons.length) buttons.push({ label: button, style: 'primary', uri: url });
     return card(title, text, buttons);
   }
 }
